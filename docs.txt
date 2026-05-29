@@ -1,0 +1,754 @@
+devvelopment directory : zen_dev
+ls :
+constants.ll runtime.o zen_stdlib_opt.ll
+constants.o test.ll zen_stdlib_opt.o
+out test_opt.ll
+runtime.c test_opt.o
+
+bash :
+> test.ll && nano test.ll && opt -O2 test.ll -S -o test_opt.ll && llc test_opt.ll -filetype=obj -o test_opt.o && clang test_opt.o runtime.o curlRuntime.o -lcurl listRuntime.o mapRuntime.o asyncRuntime.o zen_stdlib_opt.o constants.o -o out && ./out
+
+
+define ptr @_get_async(ptr %arg) {
+entry:
+  %t0 = call i8* @get(i8* %arg)
+  ret ptr %t0
+}
+
+========================================================
+ZEN STANDARD LIBRARY: LIST<T>
+    ========================================================
+    
+    TYPE:
+    --------------------------------------------------------
+    List<T>
+        
+        DESCRIPTION:
+        --------------------------------------------------------
+        List is a dynamic heap-based array structure.
+        It automatically resizes when capacity is exceeded.
+        
+        It is NOT a fixed array (int[]).
+        It is implemented internally using:
+        - pointer to heap memory
+        - size counter
+        - capacity counter
+        
+        --------------------------------------------------------
+        INTERNAL MODEL (compiler-level)
+        --------------------------------------------------------
+        
+        List<T> is represented internally as:
+            
+            struct List {
+            T* data
+            int size
+            int capacity
+            }
+            
+            --------------------------------------------------------
+            DECLARATION
+            --------------------------------------------------------
+            
+            1. Empty list
+            
+            List<int> a
+                
+                - size = 0
+                - capacity = 0
+                - data = null
+                
+                --------------------------------------------------------
+                
+                2. Initialized list
+                
+                List<int> a = [10, 20, 30]
+                    
+                    - size = 3
+                    - capacity >= 3 (implementation defined)
+                    - data allocated via malloc
+                    
+                    --------------------------------------------------------
+                    ACCESS
+                    --------------------------------------------------------
+                    
+                    1. Index access (read)
+                    
+                    a[i]
+                    
+                    returns: T
+                    
+                    2. Index access (write)
+                    
+                    a[i] = value
+                    
+                    updates element at index i
+                    
+                    RULE:
+                    - i must be in range [0, size-1]
+                    
+                    --------------------------------------------------------
+                    SIZE
+                    --------------------------------------------------------
+                    
+                    a.size
+                    
+                    returns: int
+                    
+                    meaning:
+                    - number of active elements
+                    
+                    --------------------------------------------------------
+                    PUSH
+                    --------------------------------------------------------
+                    
+                    a.push(value)
+                    
+                    behavior:
+                    1. if size < capacity: store value at data[size] size++ 2. if size==capacity: allocate new memory (capacity * 2 or initial size) copy old data → new data free old memory update pointer store value size++ -------------------------------------------------------- POP -------------------------------------------------------- a.pop() returns: T behavior: - removes last element - size-- -------------------------------------------------------- CLEAR -------------------------------------------------------- a.clear() behavior: - size=0 - capacity unchanged - data kept allocated -------------------------------------------------------- REMOVE -------------------------------------------------------- a.remove(index) behavior: - shift elements left from index - size-- -------------------------------------------------------- CONTAINS -------------------------------------------------------- a.contains(value) returns: bool behavior: - linear search -------------------------------------------------------- LOOP SUPPORT -------------------------------------------------------- 1. manual loop int i=0 while (i < a.size) { screen(a[i]) i=i + 1 } 2. foreach (optional syntax sugar) for (int x in a) { screen(x) } -------------------------------------------------------- FUNCTION USAGE -------------------------------------------------------- 1. pass to function fn sum(List<int> a)
+                        
+                        - passed by reference (no copy)
+                        
+                        --------------------------------------------------------
+                        
+                        RETURN TYPE
+                        
+                        fn getList() List<int>
+                            
+                            - returns list reference
+                            
+                            --------------------------------------------------------
+                            TYPE SAFETY RULES
+                            --------------------------------------------------------
+                            
+                            - List<int> is NOT compatible with int[]
+                                - int[] is fixed-size array
+                                - indexing syntax is identical for both
+                                - compiler resolves behavior via type system
+                                
+                                --------------------------------------------------------
+                                IMPLEMENTATION NOTES (compiler backend)
+                                --------------------------------------------------------
+                                
+                                List operations map to:
+                                
+                                - malloc (initial allocation)
+                                - realloc-like logic (manual grow)
+                                - getelementptr (indexing)
+                                - load/store (access)
+                                - size/capacity tracking in struct
+                                
+                                --------------------------------------------------------
+                                END OF SPEC
+                                ========================================================
+                            
+                            
+declare i32 @zen_open(i8*, i32)
+declare i64 @zen_read(i32, i8*, i64)
+declare i32 @zen_close(i32)
+
+define i8* @readFile(i8* %path) {
+entry:
+  %fd = call i32 @zen_open(i8* %path, i32 0)
+
+  %buf = call i8* @malloc(i64 4096)
+
+  %_ = call i64 @zen_read(i32 %fd, i8* %buf, i64 4096)
+
+  call i32 @zen_close(i32 %fd)
+
+  ret i8* %buf
+}
+
+zen_unix.c
+
+#include <fcntl.h>
+#include <unistd.h>
+
+int zen_open(char* path, int flags) {
+    return open(path, flags);
+}
+
+long zen_read(int fd, void* buf, long size) {
+    return read(fd, buf, size);
+}
+
+int zen_close(int fd) {
+    return close(fd);
+}
+
+
+zen_windows.c
+
+#include <windows.h>
+
+int zen_open(char* path, int flags) {
+    HANDLE h = CreateFileA(
+        path,
+        GENERIC_READ,
+        0,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    return (int)h;
+}
+
+long zen_read(int fd, void* buf, long size) {
+    DWORD read;
+    ReadFile((HANDLE)fd, buf, size, &read, NULL);
+    return read;
+}
+
+int zen_close(int fd) {
+    CloseHandle((HANDLE)fd);
+    return 0;
+}
+
+
+CC=gcc
+
+ifeq ($(OS),Windows_NT)
+    SRC=zen_win.c
+else
+    SRC=zen_unix.c
+endif
+
+runtime.o:
+	$(CC) -c $(SRC) -o runtime.o
+
+all: runtime.o
+
+# 1. compile runtime (OS-specific)
+make
+
+# 2. compile LLVM
+opt -O2 test.ll -S -o test_opt.ll
+
+# 3. generate object
+llc test_opt.ll -filetype=obj -o test_opt.o
+
+# 4. link everything
+clang test_opt.o runtime.o -o out
+
+# 5. run
+./out
+
+
+
+
+
+ZEN Map Documentation
+
+Overview
+
+Map is ZEN's dynamic object data structure.
+
+It allows:
+
+Dynamic fields
+
+Nested objects
+
+Runtime field creation
+
+Flexible scripting-style programming
+
+Mixed value types
+
+
+Unlike struct, Map is not fixed at compile time.
+
+
+---
+
+Basic Syntax
+
+Empty Map
+
+Map a = {}
+
+Creates an empty dynamic object.
+
+
+---
+
+Map With Fields
+
+Map user = {
+  name: "Jishith",
+  age: 21,
+  active: true
+}
+
+
+---
+
+Accessing Fields
+
+Use dot notation.
+
+screen(user.name)
+screen(user.age)
+
+
+---
+
+Updating Fields
+
+user.age = 22
+
+
+---
+
+Adding New Fields
+
+Maps support runtime field creation.
+
+user.salary = 200000
+user.country = "India"
+
+
+---
+
+Nested Maps
+
+Maps can contain other Maps.
+
+Map company = {
+  name: "ZEN",
+  founder: {
+    name: "Jishith",
+    age: 21
+  }
+}
+
+Access:
+
+screen(company.founder.name)
+
+
+---
+
+Deep Nested Access
+
+Map a = {
+  b: {
+    c: {
+      d: 100
+    }
+  }
+}
+
+screen(a.b.c.d)
+
+
+---
+
+Dynamic Creation Chain
+
+Map user = {}
+
+user.profile = {}
+user.profile.name = "ZEN"
+user.profile.age = 21
+
+
+---
+
+Mixed Types
+
+Map fields can store any type.
+
+Map data = {
+  number: 10,
+  text: "hello",
+  active: true,
+  value: 20.5
+}
+
+
+---
+
+Arrays Inside Map
+
+Map data = {
+  nums: [1, 2, 3]
+}
+
+
+---
+
+Map Inside Array
+
+List<auto> users = [
+  {
+    name: "A"
+  },
+  {
+    name: "B"
+  }
+]
+
+
+---
+
+Functions Returning Maps
+
+makeUser() Map {
+  return {
+    name: "ZEN",
+    age: 21
+  }
+}
+
+Map u = makeUser()
+
+
+---
+
+Passing Map To Function
+
+show(Map user) {
+  screen(user.name)
+}
+
+
+---
+
+Auto Inference
+
+auto user = {
+  name: "ZEN"
+}
+
+Inferred as:
+
+Map
+
+
+---
+
+Difference Between struct And Map
+
+Feature	struct	Map
+
+Compile-time fields	Yes	No
+Runtime field add	No	Yes
+Fixed layout	Yes	No
+Fast memory layout	Yes	No
+Dynamic scripting	Limited	Excellent
+Nested runtime object	Limited	Excellent
+Type safety	Strong	Dynamic
+
+
+
+---
+
+Map Rules
+
+Rule 1
+
+Map fields are resolved at runtime.
+
+user.name
+
+is runtime lookup.
+
+
+---
+
+Rule 2
+
+Fields can be added anytime.
+
+user.newField = 100
+
+
+---
+
+Rule 3
+
+Maps support nested access.
+
+a.b.c.d
+
+
+---
+
+Rule 4
+
+Maps can hold any type.
+
+int
+
+double
+
+bool
+
+string
+
+List
+
+Map
+
+struct
+
+function return values
+
+
+
+---
+
+Rule 5
+
+Accessing missing fields should throw runtime error.
+
+Example:
+
+screen(user.salary)
+
+If field doesn't exist:
+
+MapError: field 'salary' not found
+
+
+---
+
+Rule 6
+
+Dot access only.
+
+Supported:
+
+user.name
+
+Not supported:
+
+user["name"]
+
+(optional future feature)
+
+
+---
+
+Recommended Internal Runtime Model
+
+Each Map can internally store:
+
+HashMap<string, Value>
+
+Where Value is your boxed/tagged runtime value.
+
+Example:
+
+{
+  "name" -> string
+  "age" -> int
+  "active" -> bool
+}
+
+
+---
+
+Suggested Runtime APIs
+
+zen_map_new()
+zen_map_set()
+zen_map_get()
+zen_map_has()
+zen_map_remove()
+zen_map_free()
+
+
+---
+
+Suggested Future Features
+
+has()
+
+if user.has("name") {
+
+}
+
+
+---
+
+remove()
+
+user.remove("age")
+
+
+---
+
+keys()
+
+List<string> k = user.keys()
+
+
+---
+
+values()
+
+List<auto> v = user.values()
+
+
+---
+
+entries()
+
+List<auto> e = user.entries()
+
+
+---
+
+Example Programs
+
+Example 1
+
+Map user = {
+  name: "Jishith",
+  age: 21
+}
+
+screen(user.name)
+
+
+---
+
+Example 2
+
+Map company = {}
+
+company.name = "ZEN"
+company.founder = {}
+company.founder.name = "Jishith"
+
+screen(company.founder.name)
+
+
+---
+
+Example 3
+
+Map config = {
+  host: "localhost",
+  port: 3000,
+  ssl: true
+}
+
+
+---
+
+Best Use Cases
+
+Map is best for:
+
+JSON-like data
+
+API responses
+
+Dynamic configs
+
+Runtime objects
+
+User-generated data
+
+Scripting systems
+
+Flexible app state
+
+Nested dynamic data
+
+
+
+---
+
+When To Use struct Instead
+
+Use struct when:
+
+performance matters
+
+fixed memory layout needed
+
+compile-time safety needed
+
+LLVM struct optimization needed
+
+
+
+---
+
+Summary
+
+Map is ZEN's dynamic object system.
+
+It gives JavaScript/Python-style flexibility while still fitting inside ZEN's runtime and LLVM backend.
+
+Core idea:
+
+Map = dynamic runtime object
+struct = fixed compile-time object
+
+
+> **Zen Map Parameter Rule**
+>
+> Map declarations must appear **before** any function that accepts them as parameters. This is required because Zen resolves map field layouts at compile time, and the layout must exist before the function body is compiled. The call site (`add(b)`) can appear anywhere after the function. This is similar to how C requires struct definitions before functions that use them.
+>
+> ```
+> Map b = { name: "jishith" }  ✅ declare map first
+> fn add(Map a) { screen(a.name) }  ✅ function after
+> add(b)  ✅ call anywhere after
+> ```
+
+
+List
+
+ 
+// Empty init
+//List<int> empty = []
+
+// Normal List
+
+List<int> a = [10, 20, 30]
+List<bool> b = [true, false, true]
+
+List<double> c = [10.5, 20.5, 30.5]
+List<string> d = ["Hello", "World", "Zen"]
+
+// Nested 
+
+List<List<int>> e = [[10, 20], [30, 60]]
+
+// list access
+screen(a[0]) // 10
+
+// List reassignment 
+a[0] = 90
+
+// List methods
+
+a.push(40)
+a.contains(30)
+screen(a.pop()) // return pop value
+a.remove(1)
+a.clear()
+// a.free() // commented this because after free will throw error if this used. It's a feature 
+
+// Get size and capacity 
+screen(a.size)
+screen(a.capacity)
+
+// loop method
+
+loop (int i of b) {
+  screen(b[i])
+}
+
+d.remove(1)
+
+loop (int i of d) {
+  screen(d[i])
+}

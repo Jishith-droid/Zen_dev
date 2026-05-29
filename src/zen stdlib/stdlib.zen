@@ -1,0 +1,1256 @@
+fn isEven(int x) bool {
+    return x % 2 == 0
+}
+
+fn isOdd(int x) bool {
+    return x % 2 != 0
+}
+
+fn isPositive(int x) bool {
+    return x > 0
+}
+
+fn isNegative(int x) bool {
+    return x < 0
+}
+
+fn abs(int x) int {
+    if (x < 0) return 0 - x
+    return x
+}
+
+fn max(int a, int b) int {
+    if (a > b) return a
+    return b
+}
+
+fn min(int a, int b) int {
+    if (a < b) return a
+    return b
+}
+
+fn clamp(int x, int low, int high) int {
+    if (x < low) return low
+    if (x > high) return high
+    return x
+}
+
+fn sign(int x) int {
+    if (x > 0) return 1
+    if (x < 0) return -1
+    return 0
+}
+
+
+// updated
+
+fn pow(int base, int exp) double {
+
+    // =========================
+    // EDGE CASES
+    // =========================
+
+    if (exp == 0) return 1.0
+
+    if (base == 0) {
+        if (exp > 0) return 0.0
+        return inf   // or error (0^-n)
+    }
+
+    if (base == 1) return 1.0
+    if (base == -1) {
+        if (exp % 2 == 0) return 1.0
+        return -1.0
+    }
+
+    // =========================
+    // NEGATIVE EXPONENT
+    // =========================
+
+    bool neg = false
+
+    if (exp < 0) {
+        neg = true
+        exp = -exp
+    }
+
+    // =========================
+    // CORE COMPUTATION
+    // =========================
+
+    double result = 1.0
+    int i = 0
+
+    while (i < exp) {
+
+        result = result * base
+
+        // =========================
+        // OVERFLOW GUARD
+        // =========================
+        if (result == inf) {
+            return inf
+        }
+
+        i = i + 1
+    }
+
+    if (neg) {
+        return 1.0 / result
+    }
+
+    return result
+}
+
+
+fn sqrt(int x) int {
+    if (x < 0) return -1   // safe guard
+
+    int i = 1
+    while (i * i <= x) {
+        i = i + 1
+    }
+    return i - 1
+}
+
+fn square(int x) int {
+    return x * x
+}
+
+fn cube(int x) int {
+    return x * x * x
+}
+
+
+// =======================
+// ROUNDING HELPERS (STRICT)
+// =======================
+
+fn floor(double x) int {
+    int i = Int(x)
+    if (x < 0 && x != i) {
+        return i - 1
+    }
+    return i
+}
+
+fn ceil(double x) int {
+    int i = Int(x)
+    if (x == i) {
+        return i
+    }
+    if (x > 0) {
+        return i + 1
+    }
+    return i
+}
+
+fn round(double x) int {
+    int i = Int(x)
+    double diff = x - i
+    if (x >= 0) {
+        if (diff >= 0.5) return i + 1
+        return i
+    }
+    if (diff <= -0.5) return i - 1
+    return i
+}
+
+fn toFixed(double x, int precision) double {
+    if (precision < 0) return x
+
+    double factor = pow(10, precision)
+    double scaled = x * factor
+    int scaledInt = round(scaled)
+    return scaledInt / factor
+}
+
+fn mod(int x, int m) int {
+    if (m < 0) m = 0 - m
+    int r = x % m
+    if (r < 0) return r + m
+    return r
+}
+
+
+// =======================
+// NUMBER THEORY
+// =======================
+
+// NEW: greatest common divisor (Euclidean algorithm)
+fn gcd(int a, int b) int {
+    a = abs(a)
+    b = abs(b)
+    while (b != 0) {
+        int temp = b
+        b = a % b
+        a = temp
+    }
+    return a
+}
+
+// NEW: least common multiple
+fn lcm(int a, int b) int {
+    if (a == 0 || b == 0) return 0
+    return abs(a / gcd(a, b) * b)
+}
+
+fn factorial(int n) double {
+    if (n < 0) return -1.0   // undefined
+    if (n == 0) return 1.0
+    double result = 1.0
+    int i = 1
+    while (i <= n) {
+        result = result * i
+        i = i + 1
+    }
+    return result
+}
+
+// NEW: primality check
+fn isPrime(int n) bool {
+    if (n < 2) return false
+    if (n == 2) return true
+    if (isEven(n)) return false
+    int i = 3
+    while (i <= sqrt(n)) {
+        if (n % i == 0) return false
+        i = i + 2
+    }
+    return true
+}
+
+
+// =======================
+// INTERPOLATION
+// =======================
+
+// NEW: linear interpolation between a and b by t (0.0 to 1.0)
+fn lerp(double a, double b, double t) double {
+    return a + (b - a) * t
+}
+
+// NEW: normalize x from [a, b] range to [0.0, 1.0]
+fn normalize(double x, double a, double b) double {
+    if (a == b) return 0.0
+    return (x - a) / (b - a)
+}
+
+
+// =======================
+// UTILITY
+// =======================
+
+fn between(int x, int a, int b) bool {
+    return (x >= a && x <= b)
+}
+
+// ============================================================
+// ZEN STRING STDLIB — FUNCTIONS
+// ============================================================
+
+fn reverse(string s) string {
+    int len = length(s)
+    string out = ""
+    int i = len - 1
+    while (i >= 0) {
+        out = out + s[i]
+        i = i - 1
+    }
+    return out
+}
+
+fn indexOf(string s, string target) int {
+    int len = length(s)
+    int tlen = length(target)
+    if (tlen == 0) return 0
+
+    int i = 0
+    while (i <= len - tlen) {
+        bool match = true
+        int j = 0
+        while (j < tlen) {
+            if (s[i + j] != target[j]) {
+                match = false
+            }
+            j = j + 1
+        }
+        if (match) return i
+        i = i + 1
+    }
+    return -1
+}
+
+fn slice(string s, int start, int end) string {
+    int len = length(s)
+    if (start < 0) {
+        start = 0
+    }
+    if (end > len) {
+        end = len
+    }
+    if (start > end) {
+        return ""
+    }
+    string out = ""
+    int i = start
+    while (i < end) {
+        out = out + s[i]
+        i = i + 1
+    }
+    return out
+}
+
+fn charAt(string s, int index) string {
+    int len = length(s)
+    if (index < 0 || index >= len) {
+        return ""
+    }
+    return s[index]
+}
+
+fn replace(string s, string target, string repl) string {
+    int len = length(s)
+    int tlen = length(target)
+
+    if (tlen == 0) return s
+
+    string out = ""
+    int i = 0
+
+    while (i < len) {
+        bool match = true
+        int j = 0
+
+        if (i <= len - tlen) {
+            while (j < tlen) {
+                if (s[i + j] != target[j]) {
+                    match = false
+                }
+                j = j + 1
+            }
+        } else {
+            match = false
+        }
+
+        if (match) {
+            int k = 0
+            int rlen = length(repl)
+            while (k < rlen) {
+                out = out + repl[k]
+                k = k + 1
+            }
+            i = i + tlen
+        } else {
+            out = out + s[i]
+            i = i + 1
+        }
+    }
+
+    return out
+}
+
+fn contains(string s, string target) bool {
+    int len = length(s)
+    int tlen = length(target)
+
+    if (tlen == 0) return true
+
+    int i = 0
+    while (i <= len - tlen) {
+        bool match = true
+        int j = 0
+        while (j < tlen) {
+            if (s[i + j] != target[j]) {
+                match = false
+            }
+            j = j + 1
+        }
+        if (match) return true
+        i = i + 1
+    }
+
+    return false
+}
+
+fn upperCase(string s) string {
+
+    int len = length(s)
+    string out = ""
+    int i = 0
+
+    while (i < len) {
+
+        string c = s[i]
+        int code = toInt(c)
+
+        if (code >= toInt("a") && code <= toInt("z")) {
+            out = out + toString(code - 32)
+        } else {
+            out = out + c
+        }
+
+        i = i + 1
+    }
+
+    return out
+}
+
+fn lowerCase(string s) string {
+
+    int len = length(s)
+    string out = ""
+    int i = 0
+
+    while (i < len) {
+
+        string c = s[i]
+        int code = toInt(c)
+
+        if (code >= toInt("A") && code <= toInt("Z")) {
+            out = out + toString(code + 32)
+        } else {
+            out = out + c
+        }
+
+        i = i + 1
+    }
+
+    return out
+}
+
+
+fn startsWith(string s, string prefix) bool {
+    int slen = length(s)
+    int plen = length(prefix)
+
+    if (plen > slen) return false
+
+    int i = 0
+    while (i < plen) {
+        if (s[i] != prefix[i]) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fn endsWith(string s, string suffix) bool {
+    int slen = length(s)
+    int len = length(suffix)
+    if (len > slen) {
+        return false
+    }
+    int i = 0
+    while (i < len) {
+        if (s[slen - len + i] != suffix[i]) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fn trim(string s) string {
+    int len = length(s)
+
+    int start = 0
+    int end = len - 1
+
+    // left trim
+    while (start < len) {
+        string c = s[start]
+        if (c == " " || c == "\n" || c == "\t") {
+            start = start + 1
+        } else {
+            break
+        }
+    }
+
+    // right trim
+    while (end >= start) {
+        string c = s[end]
+        if (c == " " || c == "\n" || c == "\t") {
+            end = end - 1
+        } else {
+            break
+        }
+    }
+
+    string out = ""
+    int i = start
+    while (i <= end) {
+        out = out + s[i]
+        i = i + 1
+    }
+
+    return out
+}
+
+fn splitAt(string s, string delim, int target) string {
+
+    int len = length(s)
+    int dlen = length(delim)
+
+    if (dlen == 0) return ""
+
+    int i = 0
+    int k = 0
+    string temp = ""
+
+    while (i < len) {
+
+        bool match = true
+        int j = 0
+
+        if (i <= len - dlen) {
+            while (j < dlen) {
+                if (s[i + j] != delim[j]) {
+                    match = false
+                }
+                j = j + 1
+            }
+        } else {
+            match = false
+        }
+
+        if (match) {
+            if (k == target) return temp
+            k = k + 1
+            temp = ""
+            i = i + dlen
+        } else {
+            temp = temp + s[i]
+            i = i + 1
+        }
+    }
+
+    if (k == target) return temp
+
+    return ""
+}
+
+
+
+// new
+
+fn repeat(string a, int count) string {
+
+  if (count <= 0) {
+    return ""
+  }
+
+  if (length(a) == 0) {
+    return ""
+  }
+
+  string result = ""
+
+  while (0 < count) {
+    result = result + a
+    count--
+  }
+
+  return result
+}
+
+fn count(string text, string search) int {
+
+  if (length(text) == 0) {
+    return 0
+  }
+
+  if (length(search) == 0) {
+    return 0
+  }
+
+  int total = 0
+  int i = 0
+
+  while (i < length(text)) {
+
+    if (charAt(text, i) == search) {
+      total++
+    }
+
+    i++
+  }
+
+  return total
+}
+
+
+
+fn padStart(string text, int targetLength, string pad) string {
+
+  if (targetLength <= length(text)) {
+    return text
+  }
+
+  if (length(pad) == 0) {
+    return text
+  }
+
+  int needed = targetLength - length(text)
+
+  string result = ""
+
+  while (0 < needed) {
+    result = result + pad
+    needed--
+  }
+
+  return result + text
+}
+
+
+
+fn padEnd(string text, int targetLength, string pad) string {
+
+  if (targetLength <= length(text)) {
+    return text
+  }
+
+  if (length(pad) == 0) {
+    return text
+  }
+
+  int needed = targetLength - length(text)
+
+  string result = text
+
+  while (0 < needed) {
+    result = result + pad
+    needed--
+  }
+
+  return result
+}
+
+
+
+fn padCenter(string text, int targetLength, string pad) string {
+
+  if (targetLength <= length(text)) {
+    return text
+  }
+
+  if (length(pad) == 0) {
+    return text
+  }
+
+  int needed = targetLength - length(text)
+
+  int left = needed / 2
+  int right = needed - left
+
+  string leftPad = ""
+  string rightPad = ""
+
+  while (0 < left) {
+    leftPad = leftPad + pad
+    left--
+  }
+
+  while (0 < right) {
+    rightPad = rightPad + pad
+    right--
+  }
+
+  return leftPad + text + rightPad
+}
+
+fn capitalize(string s) string {
+
+    if (length(s) == 0) {
+        return ""
+    }
+
+    string first = s[0]
+    int code = toInt(first)
+
+    string out = ""
+
+    // first character: A-Z
+    if (code >= toInt("a") && code <= toInt("z")) {
+        out = out + toString(code - 32)
+    } else {
+        out = out + first
+    }
+
+    int i = 1
+    int len = length(s)
+
+    while (i < len) {
+        out = out + s[i]
+        i = i + 1
+    }
+
+    return out
+}
+
+fn extName(string path) string {
+
+    int len = length(path)
+    int i = len - 1
+
+    // find last '.'
+    while (i >= 0) {
+
+        if (path[i] == ".") {
+
+            int j = i + 1
+            string out = ""
+
+            while (j < len) {
+                out = out + path[j]
+                j = j + 1
+            }
+
+            return out
+        }
+
+        i = i - 1
+    }
+
+    // no extension found
+    return ""
+}
+
+fn sin(double x) double {
+
+    while (x > PI) {
+        x = x - TAU
+    }
+
+    while (x < -PI) {
+        x = x + TAU
+    }
+
+    return x - (x * x * x) / 6.0
+}
+
+
+fn cos(double x) double {
+
+    while (x > PI) {
+        x = x - TAU
+    }
+
+    while (x < -PI) {
+        x = x + TAU
+    }
+
+    return 1.0 - (x * x) / 2.0
+}
+
+
+fn tan(double x) double {
+
+    double s = sin(x)
+    double c = cos(x)
+
+    return s / c
+}
+
+
+fn log(double x) double {
+
+    double guess = x
+    int i = 0
+
+    while (i < 10) {
+        guess = guess - 1.0 + x / guess
+        i = i + 1
+    }
+
+    return guess
+}
+
+
+fn exp(double x) double {
+
+    double sum = 1.0
+    double term = 1.0
+    int i = 1
+
+    while (i < 10) {
+        term = (term * x) / i
+        sum = sum + term
+        i = i + 1
+    }
+
+    return sum
+}
+
+fn randomInt(int a, int b) int {
+
+    double r = random()
+
+    return a + Int((r * (b - a + 1)))
+}
+
+fn random() double {
+
+    SEED = (SEED * 1103515245 + 12345) % I32_MAX
+
+    if (SEED < 0) {
+        SEED = SEED + I32_MAX
+    }
+
+    return SEED / 2147483647.0
+}
+
+
+// regex 
+
+fn match(string text, string pattern) bool {
+
+    // =========================
+    // OR HANDLER (|)
+    // =========================
+    if (contains(pattern, "|")) {
+        string option = ""
+        int k = 0
+        while (k < length(pattern)) {
+            string c = charAt(pattern, k)
+            if (c == "|") {
+                if (match(text, option)) return true
+                option = ""
+            } else {
+                option = option + c
+            }
+            k = k + 1
+        }
+        return match(text, option)
+    }
+
+    int i = 0
+    int j = 0
+
+    while (j < length(pattern)) {
+
+        string p = charAt(pattern, j)
+
+        // =========================
+        // WILDCARD ANY CHAR ?
+        // =========================
+        if (p == "?") {
+            if (i >= length(text)) return false
+            i = i + 1
+            j = j + 1
+            continue
+        }
+
+        // =========================
+        // WILDCARD *
+        // =========================
+        if (p == "*") {
+            if (j + 1 >= length(pattern)) return true
+            int ti = i
+            while (ti <= length(text)) {
+                string sub = slice(text, ti, length(text))
+                string restPattern = slice(pattern, j + 1, length(pattern))
+                if (match(sub, restPattern)) return true
+                ti = ti + 1
+            }
+            return false
+        }
+
+        // =========================
+        // TYPE TOKENS (#)
+        // =========================
+        if (p == "#") {
+            string type = charAt(pattern, j + 1)
+
+            if (type == "d") {
+                if (i >= length(text)) return false
+                string c = charAt(text, i)
+                if (c < "0" || c > "9") return false
+                i = i + 1
+                j = j + 2
+                continue
+            }
+
+            if (type == "a") {
+                if (i >= length(text)) return false
+                string c = charAt(text, i)
+                if (!contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", c)) return false
+                i = i + 1
+                j = j + 2
+                continue
+            }
+
+            if (type == "x") {
+                if (i >= length(text)) return false
+                string c = charAt(text, i)
+                if (!contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", c)) return false
+                i = i + 1
+                j = j + 2
+                continue
+            }
+
+            if (type == "s") {
+                if (i >= length(text)) return false
+                string c = charAt(text, i)
+                if (c != " " && c != "\t") return false
+                i = i + 1
+                j = j + 2
+                continue
+            }
+        }
+
+        // =========================
+        // NAMED TOKENS (:int, :id, :string)
+        // =========================
+        if (p == ":") {
+            string token = ""
+            int k = j
+            while (k < length(pattern)) {
+                string c = charAt(pattern, k)
+                if (c == " " || c == "|") break
+                token = token + c
+                k = k + 1
+            }
+
+            if (token == ":int") {
+                int start = i
+                if (i < length(text) && charAt(text, i) == "-") {
+                    i = i + 1
+                }
+                if (i >= length(text)) return false
+                int digitStart = i
+                while (i < length(text)) {
+                    string c = charAt(text, i)
+                    if (c < "0" || c > "9") break
+                    i = i + 1
+                }
+                if (i <= digitStart) return false
+                return i == length(text)
+            }
+
+            if (token == ":id") {
+                if (i >= length(text)) return false
+                string c = charAt(text, i)
+                if (!((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_")) return false
+                i = i + 1
+                while (i < length(text)) {
+                    string c2 = charAt(text, i)
+                    if (!((c2 >= "a" && c2 <= "z") || (c2 >= "A" && c2 <= "Z") ||
+                          (c2 >= "0" && c2 <= "9") || c2 == "_")) break
+                    i = i + 1
+                }
+                return i == length(text)
+            }
+
+            if (token == ":string") {
+                return i < length(text)
+            }
+        }
+
+        // =========================
+        // CHARACTER SET / RANGE [a,b,c] or [0-9]
+        // =========================
+        if (p == "[") {
+            int end = j + 1
+            while (end < length(pattern)) {
+                if (charAt(pattern, end) == "]") break
+                end = end + 1
+            }
+
+            string set = slice(pattern, j + 1, end)
+            if (i >= length(text)) return false
+            string c = charAt(text, i)
+
+            bool found = false
+
+            if (length(set) == 3 && charAt(set, 1) == "-") {
+                string lo = charAt(set, 0)
+                string hi = charAt(set, 2)
+                if (c >= lo && c <= hi) found = true
+            } else {
+                int si = 0
+                while (si < length(set)) {
+                    string sc = charAt(set, si)
+                    if (sc == ",") {
+                        si = si + 1
+                        continue
+                    }
+                    if (sc == c) {
+                        found = true
+                        break
+                    }
+                    si = si + 1
+                }
+            }
+
+            if (!found) return false
+            i = i + 1
+            j = end + 1
+            continue
+        }
+
+        // =========================
+        // LITERAL MATCH
+        // =========================
+        if (i >= length(text)) return false
+        if (charAt(text, i) != p) return false
+        i = i + 1
+        j = j + 1
+    }
+
+    return i == length(text)
+}
+
+// json parser 
+
+fn _json_skipWS(string s, int i) int {
+    while (i < length(s) && charAt(s, i) == " ") {
+        i = i + 1
+    }
+    return i
+}
+
+fn _json_extractValue(string s, int start) string {
+
+    start = _json_skipWS(s, start)
+
+    if (charAt(s, start) == '"') {
+        int i = start + 1
+        while (i < length(s)) {
+            if (charAt(s, i) == '"') { break }
+            i = i + 1
+        }
+        return slice(s, start + 1, i)
+    }
+
+    if (charAt(s, start) == '{') {
+        int i = start
+        int depth = 0
+        while (i < length(s)) {
+            if (charAt(s, i) == '{') { depth = depth + 1 }
+            if (charAt(s, i) == '}') { depth = depth - 1 }
+            if (depth == 0) { break }
+            i = i + 1
+        }
+        return slice(s, start, i + 1)
+    }
+
+    if (charAt(s, start) == '[') {
+        int i = start
+        int depth = 0
+        while (i < length(s)) {
+            if (charAt(s, i) == '[') { depth = depth + 1 }
+            if (charAt(s, i) == ']') { depth = depth - 1 }
+            if (depth == 0) { break }
+            i = i + 1
+        }
+        return slice(s, start, i + 1)
+    }
+
+    int i = start
+    while (i < length(s)) {
+        if (charAt(s, i) == ',' ||
+            charAt(s, i) == '}' ||
+            charAt(s, i) == ']') {
+            break
+        }
+        i = i + 1
+    }
+    return slice(s, start, i)
+}
+
+fn _json_skipElement(string s, int i) int {
+
+    i = _json_skipWS(s, i)
+
+    if (charAt(s, i) == '"') {
+        i = i + 1
+        while (i < length(s)) {
+            if (charAt(s, i) == '"') { break }
+            i = i + 1
+        }
+        return i + 1
+    }
+
+    if (charAt(s, i) == '{') {
+        int depth = 0
+        while (i < length(s)) {
+            if (charAt(s, i) == '{') { depth = depth + 1 }
+            if (charAt(s, i) == '}') { depth = depth - 1 }
+            if (depth == 0) { break }
+            i = i + 1
+        }
+        return i + 1
+    }
+
+    if (charAt(s, i) == '[') {
+        int depth = 0
+        while (i < length(s)) {
+            if (charAt(s, i) == '[') { depth = depth + 1 }
+            if (charAt(s, i) == ']') { depth = depth - 1 }
+            if (depth == 0) { break }
+            i = i + 1
+        }
+        return i + 1
+    }
+
+    while (i < length(s)) {
+        if (charAt(s, i) == ',' ||
+            charAt(s, i) == ']' ||
+            charAt(s, i) == '}') {
+            break
+        }
+        i = i + 1
+    }
+    return i
+}
+
+fn _json_getArrayIndex(string arr, int index) string {
+
+    int i = _json_skipWS(arr, 0)
+
+    if (charAt(arr, i) != '[') {
+        return "null"
+    }
+
+    i = i + 1
+    int count = 0
+
+    while (i < length(arr)) {
+
+        i = _json_skipWS(arr, i)
+
+        if (charAt(arr, i) == ',') {
+            i = i + 1
+            i = _json_skipWS(arr, i)
+        }
+
+        if (charAt(arr, i) == ']') { break }
+        if (i >= length(arr))      { break }
+
+        if (count == index) {
+            return _json_extractValue(arr, i)
+        }
+
+        i = _json_skipElement(arr, i)
+        count = count + 1
+    }
+
+    return "null"
+}
+
+fn _json_getKey(string obj, string key) string {
+
+    int i = _json_skipWS(obj, 0)
+
+    if (charAt(obj, i) != '{') {
+        return "null"
+    }
+
+    i = i + 1
+
+    while (i < length(obj)) {
+
+        i = _json_skipWS(obj, i)
+
+        if (charAt(obj, i) == '}') { break }
+
+        if (charAt(obj, i) == ',') {
+            i = i + 1
+            i = _json_skipWS(obj, i)
+        }
+
+        if (charAt(obj, i) != '"') { break }
+
+        int keyStart = i + 1
+        int keyEnd   = keyStart
+        while (keyEnd < length(obj) && charAt(obj, keyEnd) != '"') {
+            keyEnd = keyEnd + 1
+        }
+        string foundKey = slice(obj, keyStart, keyEnd)
+
+        i = keyEnd + 1
+        i = _json_skipWS(obj, i)
+
+        if (charAt(obj, i) != ':') { break }
+        i = i + 1
+        i = _json_skipWS(obj, i)
+
+        if (foundKey == key) {
+            return _json_extractValue(obj, i)
+        }
+
+        i = _json_skipElement(obj, i)
+    }
+
+    return "null"
+}
+
+fn _json_parseInt(string s) int {
+    // parse a multi-digit integer string like "12" → 12
+    int result = 0
+    int i = 0
+    while (i < length(s)) {
+        // get digit value: ASCII of char minus ASCII of '0' (48)
+        int digit = toInt(charAt(s, i)) - 48
+        result = result * 10 + digit
+        i = i + 1
+    }
+    return result
+}
+
+fn json(string data, string path) string {
+
+    string current = data
+    int i = 0
+
+    while (true) {
+
+        string keyPart = splitAt(path, ".", i)
+
+        if (keyPart == "") { break }
+
+        // split "users[0]" into key="users" bracketPart="[0]"
+        // use slice not charAt concat to build key
+        int p = 0
+        while (p < length(keyPart)) {
+            if (charAt(keyPart, p) == '[') { break }
+            p = p + 1
+        }
+        string key         = slice(keyPart, 0, p)
+        string bracketPart = slice(keyPart, p, length(keyPart))
+
+        if (key != "") {
+            current = _json_getKey(current, key)
+            if (current == "null") { return "null" }
+        }
+
+        // process [0][1] etc
+        int bi = 0
+        while (bi < length(bracketPart)) {
+
+            if (charAt(bracketPart, bi) != '[') { break }
+
+            int closePos = bi + 1
+            while (closePos < length(bracketPart)) {
+                if (charAt(bracketPart, closePos) == ']') { break }
+                closePos = closePos + 1
+            }
+
+            
+            string indexStr = slice(bracketPart, bi + 1, closePos)
+            int index = _json_parseInt(indexStr)
+
+            current = _json_getArrayIndex(current, index)
+            if (current == "null") { return "null" }
+
+            bi = closePos + 1
+        }
+
+        i = i + 1
+    }
+
+    return current
+}

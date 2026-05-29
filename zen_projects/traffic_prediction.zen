@@ -1,0 +1,77 @@
+// =====================================
+// SMART TRAFFIC SIGNAL SIMULATOR
+// =====================================
+
+List<string> roads = ["North", "South", "East", "West"]
+List<int> vehicles = []
+
+int i = 0
+
+// INPUT VEHICLE COUNT
+while (i < 4) {
+
+  screen("Enter vehicles for" + roads[i])
+  string line = input()
+
+  int count = Int(line)
+
+  vehicles.push(count)
+
+  i += 1
+}
+
+
+// =====================================
+// FIND MAX CONGESTED ROAD
+// =====================================
+
+int maxIndex = 0
+int j = 1
+
+while (j < 4) {
+
+  if (vehicles[j] > vehicles[maxIndex]) {
+    maxIndex = j
+  }
+
+  j += 1
+}
+
+
+// =====================================
+// SIGNAL SIMULATION
+// =====================================
+
+screen("---- TRAFFIC STATUS ----")
+
+int k = 0
+
+while (k < 4) {
+
+  string status = ""
+
+  if (k == maxIndex) {
+    status = "GREEN (GO)"
+  } else {
+    status = "RED (STOP)"
+  }
+
+  screen(
+    roads[k] + " -> " +
+    String(vehicles[k]) + " vehicles | " +
+    status
+  )
+
+  k += 1
+}
+
+
+// =====================================
+// BONUS LOGIC: WAIT TIME ESTIMATION
+// =====================================
+
+int waitTime = vehicles[maxIndex] * 2
+
+screen("---- SYSTEM DECISION ----")
+screen("Priority Road: " + roads[maxIndex])
+screen("Estimated Wait Time: " + String(waitTime) + " sec")

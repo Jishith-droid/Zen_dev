@@ -1,0 +1,253 @@
+# ==========================================
+#  ZEN Mini File Manager
+#  A real world CLI file manager in ZEN
+# ==========================================
+
+fn printDivider() {
+  screen("==========================================")
+}
+
+fn printHeader() {
+  color("green")
+  printDivider()
+  screen("       ZEN Mini File Manager v1.0")
+  printDivider()
+  color("reset")
+}
+
+fn printMenu() {
+  color("cyan")
+  screen("")
+  screen("  [1] Show current directory")
+  screen("  [2] Read a file")
+  screen("  [3] Write to a file")
+  screen("  [4] Append to a file")
+  screen("  [5] Check if file exists")
+  screen("  [6] Rename a file")
+  screen("  [7] Delete a file")
+  screen("  [8] Create a directory")
+  screen("  [9] Change directory")
+  screen("  [0] Exit")
+  screen("")
+  color("reset")
+}
+
+fn showCwd() {
+  string dir = fs.cwd()
+  color("yellow")
+  screen("  Current Directory: " + dir)
+  color("reset")
+}
+
+fn readFileOp() {
+  string path = input("  Enter file path: ")
+  bool found = fs.exists(path)
+  if (found) {
+    string content = fs.readFile(path)
+    color("green")
+    screen("")
+    screen("  ---- File Content ----")
+    color("reset")
+    screen(content)
+    color("green")
+    screen("  ----------------------")
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: File not found — " + path)
+    color("reset")
+  }
+}
+
+fn writeFileOp() {
+  string path = input("  Enter file path: ")
+  string content = input("  Enter content: ")
+  int result = fs.writeFile(path, content)
+  if (result == 0) {
+    color("green")
+    screen("  Success: Written to " + path)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: Could not write to " + path)
+    color("reset")
+  }
+}
+
+fn appendFileOp() {
+  string path = input("  Enter file path: ")
+  bool found = fs.exists(path)
+  if (!found) {
+    color("red")
+    screen("  Error: File not found — " + path)
+    color("reset")
+    return
+  }
+  string content = input("  Enter content to append: ")
+  int result = fs.appendFile(path, content)
+  if (result == 0) {
+    color("green")
+    screen("  Success: Appended to " + path)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: Could not append to " + path)
+    color("reset")
+  }
+}
+
+fn existsOp() {
+  string path = input("  Enter file or directory path: ")
+  bool found = fs.exists(path)
+  if (found) {
+    color("green")
+    screen("  Exists: " + path)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Not found: " + path)
+    color("reset")
+  }
+}
+
+fn renameOp() {
+  string oldPath = input("  Enter current file name: ")
+  bool found = fs.exists(oldPath)
+  if (!found) {
+    color("red")
+    screen("  Error: File not found — " + oldPath)
+    color("reset")
+    return
+  }
+  string newPath = input("  Enter new file name: ")
+  int result = fs.renameFile(oldPath, newPath)
+  if (result == 0) {
+    color("green")
+    screen("  Success: Renamed " + oldPath + " → " + newPath)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: Could not rename " + oldPath)
+    color("reset")
+  }
+}
+
+fn deleteOp() {
+  string path = input("  Enter file path to delete: ")
+  bool found = fs.exists(path)
+  if (!found) {
+    color("red")
+    screen("  Error: File not found — " + path)
+    color("reset")
+    return
+  }
+  string confirm = input("  Are you sure? (yes/no): ")
+  bool yes = match(confirm, "yes")
+  if (yes) {
+    int result = fs.deleteFile(path)
+    if (result == 0) {
+      color("green")
+      screen("  Success: Deleted " + path)
+      color("reset")
+    } else {
+      color("red")
+      screen("  Error: Could not delete " + path)
+      color("reset")
+    }
+  } else {
+    color("yellow")
+    screen("  Cancelled.")
+    color("reset")
+  }
+}
+
+fn makeDirOp() {
+  string path = input("  Enter directory name: ")
+  int result = fs.makeDir(path)
+  if (result == 0) {
+    color("green")
+    screen("  Success: Directory created — " + path)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: Could not create directory " + path)
+    color("reset")
+  }
+}
+
+fn changeDirOp() {
+  string path = input("  Enter directory path: ")
+  bool found = fs.exists(path)
+  if (!found) {
+    color("red")
+    screen("  Error: Directory not found — " + path)
+    color("reset")
+    return
+  }
+  int result = fs.changeDir(path)
+  if (result == 0) {
+    string newDir = fs.cwd()
+    color("green")
+    screen("  Moved to: " + newDir)
+    color("reset")
+  } else {
+    color("red")
+    screen("  Error: Could not change directory")
+    color("reset")
+  }
+}
+
+fn handleChoice(int choice) {
+  if (choice == 1) {
+    showCwd()
+  } else if (choice == 2) {
+    readFileOp()
+  } else if (choice == 3) {
+    writeFileOp()
+  } else if (choice == 4) {
+    appendFileOp()
+  } else if (choice == 5) {
+    existsOp()
+  } else if (choice == 6) {
+    renameOp()
+  } else if (choice == 7) {
+    deleteOp()
+  } else if (choice == 8) {
+    makeDirOp()
+  } else if (choice == 9) {
+    changeDirOp()
+  } else {
+    color("red")
+    screen("  Invalid choice. Please enter 0-9.")
+    color("reset")
+  }
+}
+
+# ==========================================
+#  Entry Point
+# ==========================================
+
+printHeader()
+showCwd()
+
+bool running = true
+
+while (running) {
+  printMenu()
+  int choice = input("  Enter choice: ")
+
+  if (choice == 0) {
+    color("green")
+    screen("")
+    printDivider()
+    screen("  Goodbye from ZEN File Manager!")
+    printDivider()
+    color("reset")
+    running = false
+  } else {
+    screen("")
+    printDivider()
+    handleChoice(choice)
+    printDivider()
+  }
+}

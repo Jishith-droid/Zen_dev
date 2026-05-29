@@ -1,0 +1,122 @@
+================================================================
+  ZEN REGEX — PATTERN REFERENCE
+  Built-in pattern matching for the Zen language
+================================================================
+
+  match(str, pattern) -> bool
+
+  Returns true if str fully matches the pattern, false otherwise.
+  The entire string must match — partial matches return false.
+
+----------------------------------------------------------------
+  PATTERNS
+----------------------------------------------------------------
+
+1.  Literal          "text"
+    Matches exact string content character by character.
+    match("hello", "hello")  ->  true
+    match("hello", "world")  ->  false
+
+2.  Any Char         ?
+    Matches exactly one character of any kind.
+    match("hallo", "h?llo")  ->  true
+    match("hllo",  "h?llo")  ->  false
+
+3.  Wildcard         *
+    Matches zero or more characters of any kind.
+    match("hello123", "h*3")    ->  true
+    match("hello123", "h*6")    ->  false
+
+4.  Digit            #d
+    Matches a single numeric character (0–9).
+    match("5", "#d")  ->  true
+    match("b", "#d")  ->  false
+
+5.  Letter           #a
+    Matches a single alphabet character (a–z, A–Z).
+    match("Z", "#a")  ->  true
+    match("8", "#a")  ->  false
+
+6.  Alphanumeric     #x
+    Matches one letter or digit.
+    match("A", "#x")  ->  true
+    match("!", "#x")  ->  false
+
+7.  Space            #s
+    Matches one whitespace character (space or tab).
+    match(" ", "#s")  ->  true
+    match("a", "#s")  ->  false
+
+8.  Optional Group   (pattern?)
+    Makes the inner pattern match 0 or 1 time.
+    match("color",  "colou?r")  ->  true
+    match("colour", "colou?r")  ->  true
+
+9.  One or More      (+)
+    Repeats the previous token at least once.
+    match("aaa", "a(+)")  ->  true
+    match("",    "a(+)")  ->  false
+
+10. Zero or More     (*)
+    Repeats the previous token any number of times.
+    match("aaa", "a(*)")  ->  true
+    match("",    "a(*)")  ->  true
+
+11. OR               a|b|c
+    Matches any one of the pipe-separated alternatives.
+    match("maybe", "yes|no|maybe")  ->  true
+    match("nope",  "yes|no|maybe")  ->  false
+
+12. Character Set    [a,b,c]
+    Matches one character from the comma-separated list.
+    match("c", "[a,b,c]")  ->  true
+    match("d", "[a,b,c]")  ->  false
+
+13. Character Range  [0-9]  [a-z]
+    Matches one character within the defined range.
+    match("7", "[0-9]")  ->  true
+    match("m", "[a-z]")  ->  true
+    match("M", "[a-z]")  ->  false
+
+14. Integer Token    :int
+    Matches a full signed or unsigned integer.
+    Allows optional leading minus, digits only after.
+    match("12345",  ":int")  ->  true
+    match("-99",    ":int")  ->  true
+    match("12345a", ":int")  ->  false
+
+15. Identifier Token :id
+    Matches a valid variable or function name.
+    Must start with a letter or underscore.
+    Letters, digits, and underscores allowed after.
+    match("zen_var1",  ":id")  ->  true
+    match("_private",  ":id")  ->  true
+    match("-zen_var1", ":id")  ->  false
+    match("1abc",      ":id")  ->  false
+
+16. String Token     :string
+    Matches any non-empty sequence of characters.
+    match("hello world", ":string")  ->  true
+    match("",            ":string")  ->  false
+
+----------------------------------------------------------------
+  NOTES
+----------------------------------------------------------------
+
+  - match() always checks the full string. Partial matches
+    return false. "12345a" does not match ":int".
+
+  - OR (|) is evaluated left to right. First match wins.
+
+  - Character range [lo-hi] requires exactly 3 chars inside
+    brackets, with a dash in the middle. Example: [a-z], [0-9].
+
+  - :id must start with a letter or underscore. A leading digit
+    or symbol returns false.
+
+  - :int allows a leading minus sign. The rest must be digits
+    only with no trailing characters.
+
+================================================================
+  zen_regex  |  Zen Language Standard Library
+================================================================

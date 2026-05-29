@@ -1,0 +1,157 @@
+// ================= ERROR API =================
+
+panic("something failed")
+
+
+// ================= STRING API =================
+
+repeat("ha", 3)
+
+padStart("5", 3, "0")
+
+padEnd("Zen", 6, ".")
+
+padCenter("Zen", 10, "-")
+
+count("hello", "l")
+
+capitalize("zen")
+
+
+// ================= PATH API =================
+
+extName("main.zen")
+
+joinPath("src", "main.zen") 🚫
+
+
+// ================= MATH API =================
+
+sin(90)
+
+cos(0)
+
+tan(45)
+
+log(100)
+
+exp(2)
+
+random()
+
+randomInt(1, 100)
+
+
+// ================= FILE SYSTEM API =================
+
+readFile("test.txt")
+
+writeFile("test.txt", "Hello")
+
+appendFile("log.txt", "new log")
+
+exists("main.zen")
+
+deleteFile("temp.txt")
+
+renameFile("a.txt", "b.txt")
+
+makeDir("build")
+
+chDir("./src")
+
+
+// ================= OS API =================
+
+exec("clang main.ll -o out")
+
+sleep(1000)
+
+getEnv("PATH")
+
+cwd()
+
+cpuCount()
+
+cpuArch()
+
+cpuModel()
+
+cpuSpeed()
+
+totalMemory()
+
+freeMemory()
+
+usedMemory()
+
+processMemory()
+
+osName()
+
+osVersion()
+
+hostname()
+
+username()
+
+uptime()
+
+
+
+battery()
+
+online()
+
+
+
+
+// ================= TIME API =================
+
+time()
+
+millis()
+
+date()
+
+month()
+
+day()
+
+year()
+
+
+// ================= CLI API =================
+
+color("red")
+
+clear()
+
+
+// ================= NETWORKING API =================
+
+get("https://api.example.com")
+
+post(
+  "https://api.example.com",
+  "{ \"name\": \"Zen\" }"
+)
+
+update(
+  "https://api.example.com/user/1",
+  "{ \"name\": \"New Name\" }"
+)
+
+patch(
+  "https://api.example.com/user/1",
+  "{ \"age\": 21 }"
+)
+
+delete("https://api.example.com/user/1")
+
+
+// ================= JSON API =================
+
+json("{ \"name\": \"Zen\" }", "name")
+
+match(string, pattern)

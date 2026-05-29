@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>ZEN Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0e0e10;
+    --surface:   #141416;
+    --surface2:  #1a1a1e;
+    --surface3:  #202026;
+    --border:    #2a2a32;
+    --border2:   #333340;
+    --accent:    #7c6af7;
+    --accent2:   #5b4fcf;
+    --accent-gl: rgba(124,106,247,0.12);
+    --green:     #3ecf6e;
+    --red:       #f55f5f;
+    --amber:     #f5a623;
+    --text:      #e8e6f0;
+    --text2:     #8b899a;
+    --text3:     #4e4c5e;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Outfit', sans-serif;
+    --radius:    10px;
+    --tab-h:     42px;
+    --status-h:  26px;
+    --panel-h:   200px;
+    --toolbar-h: 48px;
+  }
+
+  html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── LAYOUT ── */
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    width: 100%;
+  }
+
+  /* ── TITLEBAR ── */
+  #titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--toolbar-h);
+    padding: 0 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .zen-logo {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -1px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 12px rgba(124,106,247,0.35);
+  }
+
+  .titlebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text2);
+    letter-spacing: 0.02em;
+  }
+
+  .titlebar-title span {
+    color: var(--text);
+  }
+
+  .titlebar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── TAB BAR ── */
+  #tabbar {
+    display: flex;
+    align-items: center;
+    height: var(--tab-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-shrink: 0;
+    scrollbar-width: none;
+  }
+  #tabbar::-webkit-scrollbar { display: none; }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 16px;
+    height: 100%;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    border-right: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .tab.active {
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  .tab-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    flex-shrink: 0;
+  }
+
+  .tab-icon {
+    font-size: 10px;
+    opacity: 0.6;
+  }
+
+  /* ── EDITOR AREA ── */
+  #editor-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* line numbers + textarea side by side */
+  #editor-inner {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  #line-numbers {
+    width: 44px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 14px 0;
+    overflow: hidden;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding-right: 10px;
+    gap: 0;
+  }
+
+  .ln {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 21px;
+    color: var(--text3);
+    min-height: 21px;
+    transition: color 0.1s;
+  }
+
+  .ln.active { color: var(--text2); }
+
+  textarea.code {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 21px;
+    padding: 14px 14px 14px 12px;
+    border: none;
+    outline: none;
+    resize: none;
+    tab-size: 4;
+    caret-color: var(--accent);
+    overflow-y: auto;
+    overflow-x: auto;
+    white-space: pre;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+    width: 100%;
+  }
+
+  textarea.code::selection {
+    background: rgba(124,106,247,0.3);
+  }
+
+  textarea.code::-webkit-scrollbar { width: 6px; height: 6px; }
+  textarea.code::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  textarea.code::-webkit-scrollbar-track { background: transparent; }
+
+  /* cursor line highlight overlay — can't do in textarea, simulate via pseudo */
+  #cursor-line {
+    position: absolute;
+    left: 44px; right: 0;
+    height: 21px;
+    background: rgba(124,106,247,0.07);
+    pointer-events: none;
+    border-left: 2px solid rgba(124,106,247,0.4);
+    display: none;
+  }
+
+  /* ── RUN BAR ── */
+  #runbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-run {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    padding: 0 16px;
+    height: 34px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    flex-shrink: 0;
+    box-shadow: 0 2px 10px rgba(124,106,247,0.3);
+  }
+
+  .btn-run:active { transform: scale(0.97); background: var(--accent2); }
+
+  .btn-run svg { width: 14px; height: 14px; }
+
+  .btn-generate {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: var(--surface3);
+    color: var(--text2);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    height: 34px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .btn-generate:hover { background: var(--surface2); color: var(--text); }
+
+  /* this is the actual Generate LLVM IR button — keep class for JS hook */
+  button.generate {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    background: var(--surface3);
+    color: var(--text2);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    height: 34px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  button.generate:hover { background: var(--surface2); color: var(--text); }
+
+  /* ── PANEL (bottom outputs) ── */
+  #panel {
+    height: var(--panel-h);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    transition: height 0.25s cubic-bezier(.4,0,.2,1);
+  }
+
+  #panel.collapsed { height: var(--tab-h); }
+  #panel.expanded  { height: 55vh; }
+
+  /* panel tab strip */
+  #panel-tabs {
+    display: flex;
+    align-items: center;
+    height: var(--tab-h);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #panel-tabs::-webkit-scrollbar { display: none; }
+
+  .panel-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    height: 100%;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text3);
+    cursor: pointer;
+    white-space: nowrap;
+    border-right: 1px solid var(--border);
+    transition: color 0.15s;
+    position: relative;
+    flex-shrink: 0;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .panel-tab.active {
+    color: var(--text);
+  }
+
+  .panel-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--green);
+  }
+
+  .panel-tab-badge {
+    background: var(--accent-gl);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  /* panel actions on right */
+  .panel-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* panel body */
+  #panel-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+  }
+
+  .panel-pane {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 14px;
+    display: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+
+  .panel-pane.active { display: block; }
+  .panel-pane::-webkit-scrollbar { width: 4px; }
+  .panel-pane::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* tokens display */
+  .tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  /* ast display */
+  .ast {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* llvm display */
+  #llvm {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ── STATUS BAR ── */
+  #statusbar {
+    display: flex;
+    align-items: center;
+    height: var(--status-h);
+    background: var(--accent2);
+    padding: 0 12px;
+    flex-shrink: 0;
+    gap: 16px;
+    overflow: hidden;
+  }
+
+  .status-item {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: rgba(255,255,255,0.75);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .status-item span { color: #fff; }
+
+  .status-right { margin-left: auto; }
+
+  /* ── ICON BUTTONS ── */
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+
+  .icon-btn:hover { background: var(--surface3); color: var(--text); }
+  .icon-btn:active { background: var(--border); }
+
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  /* small icon btn for panel */
+  .icon-btn-sm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .icon-btn-sm:hover { background: var(--surface3); color: var(--text); }
+  .icon-btn-sm svg { width: 13px; height: 13px; }
+
+  /* ── MENU OVERLAY ── */
+  #menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 52px 8px 0;
+  }
+
+  #menu-overlay.open { display: flex; }
+
+  #menu-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+  }
+
+  #menu-sheet {
+    position: relative;
+    z-index: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    width: 220px;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+    animation: menuIn 0.18s cubic-bezier(.4,0,.2,1);
+  }
+
+  @keyframes menuIn {
+    from { opacity: 0; transform: scale(0.94) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .menu-header {
+    padding: 10px 14px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: var(--sans);
+  }
+
+  .menu-item:hover { background: var(--surface3); color: var(--text); }
+  .menu-item:active { background: var(--border); }
+
+  .menu-item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.7; }
+
+  .menu-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 2px 0;
+  }
+
+  .menu-item.danger { color: var(--red); }
+  .menu-item.danger svg { opacity: 0.8; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    white-space: nowrap;
+    z-index: 200;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── RESIZE HANDLE ── */
+  #resize-handle {
+    height: 4px;
+    background: transparent;
+    cursor: ns-resize;
+    flex-shrink: 0;
+    position: relative;
+    transition: background 0.15s;
+  }
+
+  #resize-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px; height: 3px;
+    background: var(--border2);
+    border-radius: 2px;
+    transition: background 0.15s, width 0.15s;
+  }
+
+  #resize-handle:hover::after { background: var(--accent); width: 48px; }
+
+  /* ── COPY BTN (keep class for JS) ── */
+  .copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: background 0.12s, color 0.12s;
+  }
+
+  .copy-btn:hover { background: var(--border); color: var(--text); }
+
+  /* ── DOWNLOAD ── */
+  button.download-llvm {
+    display: none; /* controlled via JS, shown in menu */
+  }
+
+  /* ── MINIMAP DOTS (decorative) ── */
+  #minimap {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 20px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow: hidden;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 4px;
+    gap: 1px;
+  }
+
+  .mm-line {
+    height: 2px;
+    border-radius: 1px;
+    background: var(--border2);
+    opacity: 0.5;
+  }
+
+  .mm-line.code-line { background: var(--text3); opacity: 0.7; }
+  .mm-line.comment   { background: var(--accent); opacity: 0.3; }
+
+  /* ── BRACKET COLORS decorative text in panel ── */
+  .tok-kw    { color: #c792ea; }
+  .tok-fn    { color: #82aaff; }
+  .tok-str   { color: #c3e88d; }
+  .tok-num   { color: #f78c6c; }
+  .tok-op    { color: #89ddff; }
+  .tok-ident { color: var(--text2); }
+  .tok-punc  { color: var(--text3); }
+  .tok-tag   { 
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: var(--surface3);
+    border: 1px solid var(--border2);
+    margin: 2px;
+  }
+
+  /* ── PANEL EMPTY STATE ── */
+  .panel-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 8px;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .panel-empty svg { width: 28px; height: 28px; opacity: 0.3; }
+
+  /* ── INDIC DOT ── */
+  .indic {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .indic-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .indic-amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+  .indic-red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+
+  /* scrollbar in panel */
+  .panel-pane::-webkit-scrollbar-track { background: transparent; }
+
+  /* ── details (keep for compat, hide visually) ── */
+  details { display: none; }
+</style>
+</head>
+
+<body>
+<div id="app">
+
+  <!-- ── TITLE BAR ── -->
+  <div id="titlebar">
+    <div class="titlebar-left">
+      <div class="zen-logo">Z</div>
+      <div class="titlebar-title"><span>main</span>.zen</div>
+      <span class="indic indic-amber" id="dirty-dot" style="display:none"></span>
+    </div>
+    <div class="titlebar-right">
+      <!-- clear -->
+      <button class="icon-btn" id="btn-clear" title="Clear editor">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+        </svg>
+      </button>
+      <!-- menu -->
+      <button class="icon-btn" id="btn-menu" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="5"  r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="19" r="1.2" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── TAB BAR ── -->
+  <div id="tabbar">
+    <div class="tab active">
+      <span class="tab-icon">◆</span>
+      main.zen
+      <span class="tab-dot"></span>
+    </div>
+  </div>
+
+  <!-- ── EDITOR ── -->
+  <div id="editor-wrap">
+    <div id="editor-inner">
+      <div id="line-numbers"></div>
+      <textarea class="code" spellcheck="false" autocorrect="off" autocapitalize="off"
+        placeholder="// Write Zen code here&#10;fn main() {&#10;    screen(&quot;Hello, Zen!&quot;)&#10;}"></textarea>
+      <div id="cursor-line"></div>
+      <div id="minimap"></div>
+    </div>
+
+    <!-- ── RUN BAR ── -->
+    <div id="runbar">
+      <button class="btn-run" id="btn-run">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        Run
+      </button>
+      <button class="generate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+        </svg>
+        LLVM IR
+      </button>
+    </div>
+  </div>
+
+  <!-- ── RESIZE HANDLE ── -->
+  <div id="resize-handle"></div>
+
+  <!-- ── BOTTOM PANEL ── -->
+  <div id="panel">
+    <div id="panel-tabs">
+      <div class="panel-tab active" data-pane="tokens">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        Tokens
+        <span class="panel-tab-badge" id="tokens-count">0</span>
+      </div>
+      <div class="panel-tab" data-pane="ast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        AST
+      </div>
+      <div class="panel-tab" data-pane="llvm-pane">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        LLVM IR
+      </div>
+
+      <div class="panel-actions">
+        <button class="icon-btn-sm" id="btn-panel-collapse" title="Toggle panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="panel-body">
+      <!-- TOKENS PANE -->
+      <div class="panel-pane active" id="pane-tokens">
+        <div class="panel-empty" id="tokens-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          <div>Run LLVM IR to see tokens</div>
+        </div>
+        <div class="tokens" id="tokens-inner" style="display:none"></div>
+      </div>
+
+      <!-- AST PANE -->
+      <div class="panel-pane" id="pane-ast">
+        <div class="panel-empty" id="ast-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <div>Run LLVM IR to see AST</div>
+        </div>
+        <div class="ast" id="ast-inner" style="display:none"></div>
+      </div>
+
+      <!-- LLVM PANE -->
+      <div class="panel-pane" id="pane-llvm-pane">
+        <div class="panel-empty" id="llvm-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+          <div>Run LLVM IR to see output</div>
+        </div>
+        <pre style="display:none" id="llvm-pre"><code id="llvm"></code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STATUS BAR ── -->
+  <div id="statusbar">
+    <div class="status-item">
+      <span class="indic indic-green"></span>
+      <span>Zen</span>
+    </div>
+    <div class="status-item">Ln <span id="stat-ln">1</span>, Col <span id="stat-col">1</span></div>
+    <div class="status-item"><span id="stat-lines">0</span> lines</div>
+    <div class="status-item status-right"><span id="stat-size">0</span> chars</div>
+  </div>
+</div>
+
+<!-- ── MENU OVERLAY ── -->
+<div id="menu-overlay">
+  <div id="menu-backdrop"></div>
+  <div id="menu-sheet">
+    <div class="menu-header">Actions</div>
+    <button class="menu-item" id="menu-copy-code">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      Copy Code
+    </button>
+    <button class="menu-item" id="menu-copy-tokens">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Copy Tokens
+    </button>
+    <button class="menu-item" id="menu-copy-ast">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      Copy AST
+    </button>
+    <button class="menu-item" id="menu-copy-llvm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/></svg>
+      Copy LLVM IR
+    </button>
+    <div class="menu-sep"></div>
+    <button class="menu-item" id="menu-download-ll">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download .ll
+    </button>
+    <button class="menu-item" id="menu-download-zen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download .zen
+    </button>
+    <div class="menu-sep"></div>
+    <button class="menu-item danger" id="menu-clear">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+      Clear Editor
+    </button>
+  </div>
+</div>
+
+<!-- hidden details for JS compat -->
+<details><summary><button class="copy-btn" data-copy="tokens">Copy</button></summary><div class="tokens"></div></details>
+<details><summary><button class="copy-btn" data-copy="ast">Copy</button></summary><div class="ast"></div></details>
+<details><summary><p>LLVM</p><button class="copy-btn" data-copy="llvm">Copy</button></summary><pre><code id="llvm-hidden"></code></pre></details>
+<button class="download-llvm" style="display:none"></button>
+
+<div id="toast"></div>
+
+<script type="module" defer src="index.js"></script>
+
+<script>
+// ── INTERNAL LOGIC ────────────────────────────────────────────────────────────
+
+const textarea = document.querySelector('textarea.code');
+const lineNumbers = document.getElementById('line-numbers');
+const cursorLine = document.getElementById('cursor-line');
+const minimap = document.getElementById('minimap');
+
+// line numbers + cursor tracking
+function updateLineNumbers() {
+  const lines = textarea.value.split('\n');
+  const count = lines.length;
+  const cursorPos = textarea.selectionStart;
+  const textBefore = textarea.value.slice(0, cursorPos);
+  const currentLine = textBefore.split('\n').length;
+
+  // build line numbers
+  let html = '';
+  for (let i = 1; i <= count; i++) {
+    html += `<div class="ln${i === currentLine ? ' active' : ''}">${i}</div>`;
+  }
+  lineNumbers.innerHTML = html;
+
+  // status bar
+  const col = textBefore.split('\n').pop().length + 1;
+  document.getElementById('stat-ln').textContent  = currentLine;
+  document.getElementById('stat-col').textContent = col;
+  document.getElementById('stat-lines').textContent = count;
+  document.getElementById('stat-size').textContent  = textarea.value.length;
+
+  // cursor line overlay
+  const lineH = 21;
+  const editorPad = 14;
+  const top = editorPad + (currentLine - 1) * lineH - textarea.scrollTop;
+  cursorLine.style.top = top + 'px';
+  cursorLine.style.display = 'block';
+
+  // dirty dot
+  document.getElementById('dirty-dot').style.display =
+    textarea.value.length > 0 ? 'inline-block' : 'none';
+
+  // minimap
+  updateMinimap(lines);
+}
+
+function updateMinimap(lines) {
+  let html = '';
+  const max = Math.min(lines.length, 120);
+  for (let i = 0; i < max; i++) {
+    const l = lines[i].trim();
+    let cls = 'mm-line';
+    if (l.startsWith('//') || l.startsWith('/*')) cls += ' comment';
+    else if (l.length > 0) cls += ' code-line';
+    html += `<div class="${cls}" style="width:${Math.min(100, l.length * 1.2)}%"></div>`;
+  }
+  minimap.innerHTML = html;
+}
+
+// sync scroll between textarea and line numbers
+textarea.addEventListener('scroll', () => {
+  lineNumbers.scrollTop = textarea.scrollTop;
+  updateLineNumbers();
+});
+
+textarea.addEventListener('input', updateLineNumbers);
+textarea.addEventListener('keyup', updateLineNumbers);
+textarea.addEventListener('click', updateLineNumbers);
+textarea.addEventListener('selectionchange', updateLineNumbers);
+
+// tab key → 4 spaces
+textarea.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = textarea.selectionStart;
+    const val = textarea.value;
+    textarea.value = val.slice(0, s) + '    ' + val.slice(textarea.selectionEnd);
+    textarea.selectionStart = textarea.selectionEnd = s + 4;
+    updateLineNumbers();
+  }
+});
+
+// ── PANEL TABS ────────────────────────────────────────────────────────────────
+
+document.querySelectorAll('.panel-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const pane = tab.dataset.pane;
+    document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('pane-' + pane)?.classList.add('active');
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+    }
+  });
+});
+
+// ── PANEL COLLAPSE ────────────────────────────────────────────────────────────
+
+const panel = document.getElementById('panel');
+const collapseBtn = document.getElementById('btn-panel-collapse');
+let panelCollapsed = false;
+
+collapseBtn.addEventListener('click', () => {
+  panelCollapsed = !panelCollapsed;
+  panel.classList.toggle('collapsed', panelCollapsed);
+  collapseBtn.style.transform = panelCollapsed ? 'rotate(180deg)' : '';
+});
+
+// ── RESIZE HANDLE ─────────────────────────────────────────────────────────────
+
+const handle = document.getElementById('resize-handle');
+const editorWrap = document.getElementById('editor-wrap');
+let resizing = false, startY = 0, startPanelH = 0;
+
+handle.addEventListener('pointerdown', e => {
+  resizing = true;
+  startY = e.clientY;
+  startPanelH = panel.offsetHeight;
+  handle.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+handle.addEventListener('pointermove', e => {
+  if (!resizing) return;
+  const delta = startY - e.clientY;
+  const newH = Math.max(42, Math.min(window.innerHeight * 0.7, startPanelH + delta));
+  panel.style.height = newH + 'px';
+  panel.style.transition = 'none';
+  panelCollapsed = newH <= 42;
+  panel.classList.toggle('collapsed', panelCollapsed);
+});
+
+handle.addEventListener('pointerup', () => {
+  resizing = false;
+  panel.style.transition = '';
+});
+
+// ── MENU ──────────────────────────────────────────────────────────────────────
+
+const menuOverlay = document.getElementById('menu-overlay');
+const menuBtn = document.getElementById('btn-menu');
+
+menuBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  menuOverlay.classList.toggle('open');
+});
+
+document.getElementById('menu-backdrop').addEventListener('click', () => {
+  menuOverlay.classList.remove('open');
+});
+
+function closeMenu() { menuOverlay.classList.remove('open'); }
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ── COPY HELPERS ──────────────────────────────────────────────────────────────
+
+function copyText(text, label) {
+  navigator.clipboard.writeText(text).then(() => showToast(`${label} copied`));
+  closeMenu();
+}
+
+// get raw content from hidden panes (set by index.js)
+function getRawTokens() {
+  return document.querySelector('.tokens')?.textContent || document.getElementById('tokens-inner')?.textContent || '';
+}
+function getRawAst() {
+  return document.querySelector('.ast')?.textContent || document.getElementById('ast-inner')?.textContent || '';
+}
+function getRawLlvm() {
+  return document.getElementById('llvm')?.textContent || '';
+}
+
+document.getElementById('menu-copy-code').addEventListener('click', () =>
+  copyText(textarea.value, 'Code'));
+
+document.getElementById('menu-copy-tokens').addEventListener('click', () =>
+  copyText(getRawTokens(), 'Tokens'));
+
+document.getElementById('menu-copy-ast').addEventListener('click', () =>
+  copyText(getRawAst(), 'AST'));
+
+document.getElementById('menu-copy-llvm').addEventListener('click', () =>
+  copyText(getRawLlvm(), 'LLVM IR'));
+
+// keep old copy-btn data-copy for compat with index.js
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const target = btn.dataset.copy;
+    let text = '';
+    if (target === 'tokens') text = getRawTokens();
+    if (target === 'ast')    text = getRawAst();
+    if (target === 'llvm')   text = getRawLlvm();
+    copyText(text, target.toUpperCase());
+  });
+});
+
+// ── DOWNLOAD ──────────────────────────────────────────────────────────────────
+
+function download(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type }));
+  a.download = filename;
+  a.click();
+  closeMenu();
+  showToast(`Downloaded ${filename}`);
+}
+
+document.getElementById('menu-download-ll').addEventListener('click', () =>
+  download(getRawLlvm(), 'output.ll', 'text/plain'));
+
+document.getElementById('menu-download-zen').addEventListener('click', () =>
+  download(textarea.value, 'main.zen', 'text/plain'));
+
+// keep original download-llvm button functional for index.js
+document.querySelector('button.download-llvm').addEventListener('click', () =>
+  download(getRawLlvm(), 'output.ll', 'text/plain'));
+
+// ── CLEAR ─────────────────────────────────────────────────────────────────────
+
+function clearEditor() {
+  textarea.value = '';
+  updateLineNumbers();
+  showToast('Editor cleared');
+  closeMenu();
+}
+
+document.getElementById('btn-clear').addEventListener('click', clearEditor);
+document.getElementById('menu-clear').addEventListener('click', clearEditor);
+
+// ── RUN (stub — real impl in index.js) ───────────────────────────────────────
+
+document.getElementById('btn-run').addEventListener('click', () => {
+  // index.js listens to button.generate click; trigger it
+  document.querySelector('button.generate').click();
+});
+
+// ── SYNC: mirror output from index.js into new UI ────────────────────────────
+// index.js writes to .tokens, .ast, #llvm — we mirror into visible panes
+
+const observer = new MutationObserver(() => {
+  // tokens
+  const tokSrc = document.querySelector('details .tokens');
+  const tokDst = document.getElementById('tokens-inner');
+  const tokEmpty = document.getElementById('tokens-empty');
+  if (tokSrc && tokSrc.innerHTML.trim()) {
+    tokDst.innerHTML = tokSrc.innerHTML;
+    tokDst.style.display = 'flex';
+    tokEmpty.style.display = 'none';
+    const count = tokDst.querySelectorAll('*').length || tokSrc.textContent.split(',').length;
+    document.getElementById('tokens-count').textContent = count;
+  }
+
+  // ast
+  const astSrc = document.querySelector('details .ast');
+  const astDst = document.getElementById('ast-inner');
+  const astEmpty = document.getElementById('ast-empty');
+  if (astSrc && astSrc.innerHTML.trim()) {
+    astDst.innerHTML = astSrc.innerHTML;
+    astDst.style.display = 'block';
+    astEmpty.style.display = 'none';
+  }
+
+  // llvm
+  const llvmSrc = document.getElementById('llvm-hidden') || document.querySelectorAll('#llvm')[1];
+  const llvmDst = document.getElementById('llvm');
+  const llvmPre = document.getElementById('llvm-pre');
+  const llvmEmpty = document.getElementById('llvm-empty');
+  const mainLlvm = document.querySelector('details pre code#llvm');
+  if (mainLlvm && mainLlvm.textContent.trim()) {
+    llvmDst.textContent = mainLlvm.textContent;
+    llvmPre.style.display = 'block';
+    llvmEmpty.style.display = 'none';
+  }
+});
+
+observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+// also patch: when index.js calls generate, switch to LLVM tab
+const generateBtn = document.querySelector('button.generate');
+if (generateBtn) {
+  generateBtn.addEventListener('click', () => {
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+      panelCollapsed = false;
+    }
+    // switch to llvm tab after short delay
+    setTimeout(() => {
+      document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel-pane').forEach(p => p.classList.remove('active'));
+      document.querySelector('[data-pane="llvm-pane"]')?.classList.add('active');
+      document.getElementById('pane-llvm-pane')?.classList.add('active');
+    }, 100);
+  }, true); // capture phase so we run before index.js
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+updateLineNumbers();
+</script>
+
+</body>
+</html>
