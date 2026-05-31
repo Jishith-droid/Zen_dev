@@ -1,0 +1,10 @@
+test
+
+variable declaration literal primitive global / local scope / scopes system ✅ 
+switch case ✅ 
+Normal loop ✅ 
+while ✅ 
+do while ✅ 
+loop of 
+variable declaration all expression for primitive ✅ 
+

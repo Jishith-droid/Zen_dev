@@ -1,4 +1,3 @@
-
 import { Lexer } from '/src/lexer/lexer.js';
 import { Parser } from '/src/parser/parser.js';
 import { CodeGen } from '/src/codegen/codegen.js';
@@ -22,8 +21,7 @@ export class Module {
     return `
     int const a = 10
     int b = 20
-    export (a)
-    export (b)
+    export (a, b)
     `;
   }
   
@@ -58,10 +56,10 @@ export class Module {
     
     // 4. separate compilation
     const moduleCodegen = new CodeGen(ast, this);
-  
+    
     const { ir, symbolTable, functionTable } = moduleCodegen.generateLLVM();
     
-    console.log(ir)
+    console.log(ir) // for getting export file generated llvm
     
     // store generated llvm
     this.generatedModules.set(
@@ -72,7 +70,7 @@ export class Module {
     // optional browser download
     this.writeLLFile(source, ir);
     
-    const tables = {symbolTable: symbolTable[0], functionTable}
+    const tables = { symbolTable: symbolTable[0], functionTable }
     
     // 5. collect exports ONLY
     this.collectExports(ast, source, tables);
@@ -95,7 +93,7 @@ export class Module {
     if (!exportNode) {
       this.IRB.emitError(
         "ModuleError",
-        `${moduleName} does not provide any exports`
+        `${moduleName} does not provide any exports`, ast
       );
       return;
     }
@@ -110,7 +108,7 @@ export class Module {
       if (!exists) {
         this.IRB.emitError(
           "ExportError",
-          `${name} is not defined`
+          `${name} is not defined`, ast
         );
       }
     }
@@ -127,7 +125,13 @@ export class Module {
         node.type === "FUNCTION_DECLARATION" &&
         exportSet.has(node.name)) {
         
-        if (!tables.functionTable.has(node.name)) return;
+        if (!tables.functionTable.has(node.name)) {
+          this.IRB.emitError(
+            "InternalError",
+            `Missing function table entry for ${node.name}`,
+            node
+          );
+        }
         
         const table = tables.functionTable.get(node.name);
         
@@ -146,7 +150,13 @@ export class Module {
         node.type === "VARIABLE_DECLARATION" &&
         exportSet.has(node.name)) {
         
-        if (!tables.symbolTable.has(node.name)) return;
+        if (!tables.symbolTable.has(node.name)) {
+          this.IRB.emitError(
+            "InternalError",
+            `Missing symbol table entry for '${node.name}'`,
+            node
+          );
+        }
         
         const table = tables.symbolTable.get(node.name);
         
@@ -179,7 +189,7 @@ export class Module {
       
       if (seen.has(name)) {
         this.IRB.emitError(
-          `${type}Error`,
+          `TypeError`,
           `duplicate ${type.toLowerCase()} ${name}`
         );
       }
@@ -282,9 +292,9 @@ export class Module {
     
     for (const p of params) {
       
-     if (p?.isRest) {
-      return `(...)`;
-    } 
+      if (p?.isRest) {
+        return `(...)`;
+      }
       
       out.push(
         this.IRB.getLLVMType(p.type)
@@ -311,9 +321,6 @@ export class Module {
     
     a.download =
       source.replace(".zen", ".ll");
-    
-    // optional auto download
-    // a.click();
     
     URL.revokeObjectURL(url);
   }

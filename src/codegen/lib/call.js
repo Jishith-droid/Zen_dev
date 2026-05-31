@@ -1,12 +1,11 @@
-import { NOT_STANDALONE_BUILTIN_FUNCTIONS, OS_MAP, FILE_MAP, TIME_MAP, NETWORK_MAP, SYS_MAP, HTTP_MAP } from '/src/config/config.js';
+import { NON_STANDALONE_BUILTINS, OS_MAP, FILE_MAP, TIME_MAP, NETWORK_MAP, SYS_MAP, HTTP_MAP, STD_FUNCTIONS } from '/src/config/config.js';
 
 export class Call {
-  constructor(IRB, expr, io, type, string, stdlib, error, file, os, time, network, http, sys) {
+  constructor(IRB, expr, io, type, string, error, file, os, time, network, http, sys) {
     this.IRB = IRB;
     this.io = io;
     this.type = type;
     this.string = string;
-    this.STDLIB = stdlib;
     this.error = error;
     this.file = file;
     this.os = os;
@@ -36,8 +35,7 @@ export class Call {
       
       const valExpr = this.expr.handleExpression(fakeNode);
       
-      if (valExpr.local.length) this.IRB.emit(valExpr.local.join("\n"));
-      if (valExpr.global.length) this.IRB.globals.push(valExpr.global.join("\n"));
+      this.IRB.emitExpr(valExpr);
       
       return {
         ptr: valExpr.ptr,
@@ -53,28 +51,24 @@ export class Call {
     
     const name = node.name;
     
-    if (node.isInbuilt) {
-      
+    if (STD_FUNCTIONS.includes(name)) {
+    this.IRB.usedStdFunctions.add(name);
+    if (!this.IRB.functions.has(name)) {
+        this.IRB.setStdlibFunctions();
+    }
+   }
+    
+    if (node.isInbuilt && !STD_FUNCTIONS.includes(name)) {
+
+      this.IRB.leaveFunction();
       return this.handleBuiltInCall(node, globalScope);
     }
-    
     
     if (node.isAwait && !this.IRB.currentFunction.isAsync) {
       this.IRB.emitError(
         "SyntaxError",
         "await can only be used inside async functions", node
       );
-    }
-    
-    
-    
-    if (this.STDLIB.includes(name)) {
-      
-      this.IRB.usedStdFunctions.add(name);
-      if (!this.IRB.functions.has(name)) {
-        
-        this.IRB.setStdlibFunctions();
-      }
     }
     
     const fn = this.IRB.getFunction(name);
@@ -87,10 +81,8 @@ export class Call {
     let global = [];
     let local = [];
     
-    
-    // =========================================================
     // Evaluate all arguments
-    // =========================================================
+    
     for (const arg of finalArgs) {
       
       const val = this.expr.handleExpression(arg, false);
@@ -99,15 +91,13 @@ export class Call {
         this.IRB.emitError("TypeError", "void value used in expression", node);
       }
       
-      if (val.global.length) global.push(...val.global);
-      if (val.local.length) local.push(...val.local);
+      this.IRB.emitExpr(val);
       
       args.push(val);
     }
     
-    // =========================================================
     // REST INDEX
-    // =========================================================
+    
     let restIndex = -1;
     
     if (hasRest) {
@@ -136,14 +126,13 @@ export class Call {
         layout = layoutt;
         if (layout) {
           
-          this.IRB.maps.set(param.name, layoutt); // "a" → same layout as "b"
+          this.IRB.maps.set(param.name, layoutt); // "a" same layout as "b"
         }
       }
     }
     
-    // =========================================================
-    // REST CALL HANDLING (ZEN LIST BASED)
-    // =========================================================
+    // REST CALL HANDLING (List based)
+    
     if (hasRest) {
       
       // declare runtime once
@@ -169,15 +158,14 @@ export class Call {
       let global = [];
       let local = [];
       
-      // =====================================================
       // FIXED ARGS
-      // =====================================================
+      
       for (const a of fixedArgs) {
         
         if (a.global?.length) global.push(...a.global);
         if (a.local?.length) local.push(...a.local);
         
-        // IMPORTANT: handle pointer-level correctly
+        // handle pointer-level correctly
         if (a.isList) {
           const tmp = this.IRB.newTemp();
           local.push(`${tmp} = load ptr, ptr ${a.ptr}`);
@@ -187,14 +175,8 @@ export class Call {
         }
       }
       
-      // =====================================================
-      // BUILD VARARGS AS ZEN LIST
-      // =====================================================
-      
-      
-      // =========================================
       // REST TYPE VALIDATION
-      // =========================================
+      
       const first = restArgs[0];
       // declared rest param type
       const restParam = fn.params[restIndex];
@@ -232,10 +214,6 @@ export class Call {
         }
       }
       
-      
-      
-      
-      
       const elementSize = this.IRB.sizeOf(inferredType);
       const llvmType = this.IRB.getLLVMType(inferredType);
       const listPtr = this.IRB.newTemp();
@@ -262,18 +240,11 @@ export class Call {
         );
       }
       
-      // =====================================================
       // PASS VARARGS LIST
-      // =====================================================
       
       argStr.push(`ptr ${listPtr}`);
       
-      // optional if you still want count (can remove later)
-      // argStr.push(`i32 ${count}`);
-      
-      // =====================================================
       // EMIT CALL
-      // =====================================================
       
       let callTmp = null;
       
@@ -313,9 +284,7 @@ export class Call {
       };
     }
     
-    // =========================================================
     // NORMAL CALL HANDLING
-    // =========================================================
     
     for (const a of args) {
       
@@ -442,6 +411,7 @@ export class Call {
         const NW = NETWORK_MAP[name];
         const HTTP = HTTP_MAP[name];
         const SYS = SYS_MAP[name];
+        
         if (os) {
           return this.os.zenNativeOSCall(
             node,
@@ -509,7 +479,7 @@ export class Call {
       }
       
       default:
-        this.IRB.emitError("InternalError", `unknown inbuilt function ${name}`, node);
+        this.IRB.emitError("InternalError", `unknown builtin function ${name}`, node);
     }
   }
 }

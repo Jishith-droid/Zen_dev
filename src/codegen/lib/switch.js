@@ -9,14 +9,12 @@ export class Switch {
     const expr = this.expr.handleExpression(node.discriminant);
     const caseSeen = new Set();
     
-    if (expr?.local?.length) {
-      this.IRB.emit(expr.local.join("\n"))
-    }
+    this.IRB.emitExpr(expr);
     
     if (expr.type !== "int") {
       this.IRB.emitError(
         "TypeError",
-        `Invalid switch expression type '${expr.type}'. Expected 'int'.`, node
+        `Invalid switch expression type '${expr.type}'. Expected 'int'`, node
       );
     }
     const endLabel = this.IRB.newLabel("switch_end");
@@ -26,9 +24,7 @@ export class Switch {
       this.IRB.newLabel("switch_case")
     );
     
-    // =========================
     // BUILD SWITCH INSTRUCTION
-    // =========================
     
     let switchIR = `switch ${expr.llvmType} ${expr.ptr}, label %${defaultLabel} [\n`;
     
@@ -60,43 +56,38 @@ export class Switch {
     
     this.IRB.emit(switchIR);
     
-    // =========================
     // CASE BLOCKS
-    // =========================
     
     for (let i = 0; i < node.cases.length; i++) {
       const c = node.cases[i];
       
       this.IRB.emit(`${caseLabels[i]}:`);
       
-      for (const stmt of c.statements) {
-        this.block.block(stmt);
+      const blockNode = {
+        type: "BLOCK",
+        body: c.statements
       }
       
-      // implicit break (no fallthrough)
+        this.block.block(blockNode, false);
+      
+      // implicit break
       this.IRB.emit(`br label %${endLabel}`);
     }
     
-    // =========================
     // DEFAULT BLOCK
-    // =========================
     
     this.IRB.emit(`${defaultLabel}:`);
     
     if (node.defaultCase) {
       for (const stmt of node.defaultCase.statements) {
-        this.block.block(stmt);
+        this.block.block(stmt, false);
       }
     }
     
     this.IRB.emit(`br label %${endLabel}`);
     
-    // =========================
     // END BLOCK
-    // =========================
     
     this.IRB.emit(`${endLabel}:`);
   }
-  
-
 }

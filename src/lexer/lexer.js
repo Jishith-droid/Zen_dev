@@ -4,13 +4,21 @@ const SORTED_OPERATORS = [...OPERATORS]
   .sort((a, b) => b.length - a.length);
 
 export class Lexer {
-  constructor(source) {
+  constructor(source, IRB) {
     this.source = source;
     this.pos = 0;
     this.currentChar = this.source[this.pos] || null;
     this.tokens = [];
     this.line = 1;
     this.column = 1;
+    this.IRB = IRB;
+  }
+  
+  lineAndColumn() {
+    return {
+      line: this.line,
+      column: this.column
+    }
   }
   
   addToken(type, value) {
@@ -31,196 +39,10 @@ export class Lexer {
     });
   }
   
-  /*
   tokenize() {
     while (this.currentChar !== null) {
       
-      if (this.currentChar === '\n') {
-        this.tokens.push({
-          type: TokenTypes.NEWLINE,
-          value: "\n"
-        });
-        this.advance();
-        continue;
-      }
-      
-      if (this.currentChar === ' ' || this.currentChar === '\t' || this.currentChar === '\r') {
-        this.advance();
-        continue;
-      }
-      if (this.currentChar === "/" && this.peek() === "/") {
-        this.skipComment();
-        continue;
-      }
-      if (this.currentChar === "/" && this.peek() === "*") {
-        this.skipMultiLineComment();
-        continue;
-      }
-      // identifier
-      if (/[a-zA-Z_]/.test(this.currentChar)) {
-        const word = this.identifier();
-        if (word === "true" || word === "false") {
-          this.tokens.push({ type: TokenTypes.BOOLEAN, value: word === "true" });
-          
-        } else if (TYPES.includes(word)) {
-          this.tokens.push({ type: TokenTypes.TYPE, value: word });
-        } 
-        else if (KEYWORDS.includes(word)) {
-          this.tokens.push({ type: TokenTypes.KEYWORD, value: word });
-        } else {
-          this.tokens.push({ type: TokenTypes.IDENTIFIER, value: word });
-        }
-        continue;
-      }
-      if (this.currentChar === ":") {
-        this.tokens.push({
-          type: TokenTypes.COLON,
-          value: ":"
-        });
-        this.advance();
-        continue;
-      }
-      if (this.source.startsWith("...", this.pos)) {
-        this.tokens.push({
-          type: TokenTypes.ELLIPSIS,
-          value: "..."
-        });
-        
-        this.pos += 3;
-        this.currentChar = this.source[this.pos] || null;
-        
-        continue;
-      }
-      if (this.currentChar === ".") {
-        this.tokens.push({
-          type: TokenTypes.DOT,
-          value: "."
-        });
-        this.advance();
-        continue;
-      }
-      if (this.currentChar === "[") {
-        this.tokens.push({
-          type: TokenTypes.LBRACKET,
-          value: "["
-        });
-        this.advance();
-        continue;
-      }
-      if (this.currentChar === "]") {
-        this.tokens.push({
-          type: TokenTypes.RBRACKET,
-          value: "]"
-        });
-        this.advance();
-        continue;
-      }
-      if (/\d/.test(this.currentChar)) {
-        
-        const num = this.number();
-        
-        this.tokens.push({
-          type: num.isFloat ? TokenTypes.DOUBLE : TokenTypes.INT,
-          value: num.value
-        });
-        
-        continue;
-      }
-      // string
-      if (this.currentChar === '"' || this.currentChar === "'") {
-        this.tokens.push({ type: TokenTypes.STRING, value: this.string() });
-        
-        continue;
-      }
-      if (this.currentChar === '?') {
-        this.tokens.push({ type: TokenTypes.QUESTION, value: "?" });
-        this.advance();
-        continue;
-      }
-      // operators
-      let matched = false;
-      
-      for (const op of SORTED_OPERATORS) {
-        if (this.source.startsWith(op, this.pos)) {
-          
-          let type;
-          
-          if (ASSIGNMENT_OPS.includes(op)) {
-            type = "ASSIGNMENT";
-          } else if (ARITHMETIC_OPS.includes(op)) {
-            if (op === "+") type = "PLUS";
-            else if (op === "-") type = "MINUS";
-            else if (op === "*") type = "STAR";
-            else if (op === "/") type = "SLASH";
-            else if (op === "%") type = "MODULO";
-          } else if (COMPARISON_OPS.includes(op)) {
-            type = "COMPARISON";
-          } else if (LOGICAL_OPS.includes(op)) {
-            type = "LOGICAL";
-          } else if (UNARY_OPS.includes(op)) {
-            type = op === "!" ? "BANG" :
-              op === "++" ? "PLUS_PLUS" :
-              "MINUS_MINUS";
-          }
-          
-          this.tokens.push({ type, value: op });
-          
-          this.pos += op.length;
-          this.currentChar = this.source[this.pos] || null;
-          matched = true;
-          break;
-        }
-      }
-      
-      if (matched) continue;
-      
-      // parentheses and blocks 
-      if (this.currentChar === "(") {
-        this.tokens.push({ type: TokenTypes.LEFT_PARENTHESIS, value: "(" });
-        this.advance();
-        continue;
-      }
-      
-      if (this.currentChar === ")") {
-        this.tokens.push({ type: TokenTypes.RIGHT_PARENTHESIS, value: ")" });
-        this.advance();
-        continue;
-      }
-      if (this.currentChar === "{") {
-        this.tokens.push({ type: TokenTypes.BLOCK_START, value: "{" });
-        this.advance();
-        continue;
-      }
-      
-      if (this.currentChar === "}") {
-        this.tokens.push({ type: TokenTypes.BLOCK_END, value: "}" });
-        this.advance();
-        continue;
-      }
-      
-      // constant
-      if (this.currentChar === "^") {
-        this.tokens.push({ type: TokenTypes.CONSTANT, value: "^" });
-        this.advance();
-        continue;
-      }
-      // comma
-      if (this.currentChar === ",") {
-        this.tokens.push({ type: TokenTypes.COMMA, value: "," });
-        this.advance();
-        continue;
-      }
-      
-      throw new Error(`Unexpected character: ${this.currentChar} at line ${this.line}, column ${this.column}`);
-    }
-    // EOF
-    this.tokens.push({ type: TokenTypes.EOF, value: null });
-    return this.tokens;
-  }
-  */
-  
-  tokenize() {
-    while (this.currentChar !== null) {
+      // newline
       
       if (this.currentChar === '\n') {
         this.addToken(
@@ -239,6 +61,8 @@ export class Lexer {
         this.advance();
         continue;
       }
+      
+      // comments
       
       if (
         this.currentChar === "/" &&
@@ -263,9 +87,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // IDENTIFIER
-      // =========================
       
       if (/[a-zA-Z_]/.test(this.currentChar)) {
         
@@ -313,10 +135,8 @@ export class Lexer {
         
         continue;
       }
-      
-      // =========================
-      // :
-      // =========================
+    
+     // synmbols
       
       if (this.currentChar === ":") {
         this.addToken(
@@ -326,10 +146,6 @@ export class Lexer {
         this.advance();
         continue;
       }
-      
-      // =========================
-      // ...
-      // =========================
       
       if (this.source.startsWith("...", this.pos)) {
         
@@ -346,10 +162,6 @@ export class Lexer {
         continue;
       }
       
-      // =========================
-      // .
-      // =========================
-      
       if (this.currentChar === ".") {
         this.addToken(
           TokenTypes.DOT,
@@ -358,10 +170,6 @@ export class Lexer {
         this.advance();
         continue;
       }
-      
-      // =========================
-      // [
-      // =========================
       
       if (this.currentChar === "[") {
         this.addToken(
@@ -372,10 +180,6 @@ export class Lexer {
         continue;
       }
       
-      // =========================
-      // ]
-      // =========================
-      
       if (this.currentChar === "]") {
         this.addToken(
           TokenTypes.RBRACKET,
@@ -385,9 +189,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // NUMBER
-      // =========================
       
       if (/\d/.test(this.currentChar)) {
         
@@ -408,9 +210,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // STRING
-      // =========================
       
       if (
         this.currentChar === '"' ||
@@ -432,9 +232,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // ?
-      // =========================
       
       if (this.currentChar === '?') {
         this.addToken(
@@ -445,9 +243,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // OPERATORS
-      // =========================
       
       let matched = false;
       
@@ -502,9 +298,7 @@ export class Lexer {
       
       if (matched) continue;
       
-      // =========================
       // (
-      // =========================
       
       if (this.currentChar === "(") {
         this.addToken(
@@ -515,9 +309,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // )
-      // =========================
       
       if (this.currentChar === ")") {
         this.addToken(
@@ -528,9 +320,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // {
-      // =========================
       
       if (this.currentChar === "{") {
         this.addToken(
@@ -541,9 +331,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
       // }
-      // =========================
       
       if (this.currentChar === "}") {
         this.addToken(
@@ -554,22 +342,7 @@ export class Lexer {
         continue;
       }
       
-      // =========================
-      // ^
-      // =========================
-      
-      if (this.currentChar === "^") {
-        this.addToken(
-          TokenTypes.CONSTANT,
-          "^"
-        );
-        this.advance();
-        continue;
-      }
-      
-      // =========================
       // ,
-      // =========================
       
       if (this.currentChar === ",") {
         this.addToken(
@@ -580,9 +353,8 @@ export class Lexer {
         continue;
       }
       
-      throw new Error(
-        `Unexpected character: ${this.currentChar} at line ${this.line}, column ${this.column}`
-      );
+      this.IRB.emitError("SyntaxError",
+        `Unexpected character: '${this.currentChar}' at line ${this.line}, column ${this.column}`, this.lineAndColumn());
     }
     
     // EOF
@@ -629,8 +401,9 @@ export class Lexer {
       this.advance();
     }
     
-    throw new Error("Unterminated multi-line comment");
+    this.IRB.emitError("SyntaxError", "Unterminated multi-line comment", this.lineAndColumn());
   }
+  
   identifier() {
     let result = '';
     while (this.currentChar !== null && /[a-zA-Z_0-9]/.test(this.currentChar)) {
@@ -695,7 +468,7 @@ export class Lexer {
     if (this.currentChar === quoteType) {
       this.advance();
     } else {
-      throw new Error('Unterminated string literal');
+      this.IRB.emitError("SyntaxError", "Unterminated string literal", this.lineAndColumn());
     }
     
     return result;

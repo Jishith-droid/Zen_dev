@@ -9,7 +9,9 @@ const btn = document.querySelector(".generate");
 const tokenDiv = document.querySelector(".tokens");
 const astDiv = document.querySelector(".ast");
 const llvmDiv = document.getElementById("llvm");
+const highlight = document.getElementById("codeHighlight");
 const clearBtn = document.querySelector(".clear");
+const IR = new IRBuilder();
 
 clearBtn.addEventListener("click", async()=> {
   
@@ -22,8 +24,15 @@ clearBtn.addEventListener("click", async()=> {
       console.error("Clipboard failed:", err);
       alert("Copy failed (browser permission issue)");
     }
+    
   code.value = "";
+    
+  
   window.location.reload();
+  
+    code.textContent = ""
+    highlight.textContent = ""
+  
 })
 
 btn.addEventListener("click", () => {
@@ -33,13 +42,12 @@ btn.addEventListener("click", () => {
   astDiv.textContent = "";
   
   const source = code.value;
-  const IR = new IRBuilder();
   
-  const lexer = new Lexer(source);
+  const lexer = new Lexer(source, IR);
   const tokens = lexer.tokenize();
   tokenDiv.textContent = JSON.stringify(tokens, null, 2);
   
-  const parser = new Parser(tokens);
+  const parser = new Parser(tokens, IR);
   const ast = parser.parse();
   astDiv.textContent = JSON.stringify(ast, null, 2);
   
@@ -47,6 +55,7 @@ btn.addEventListener("click", () => {
   const llvm = codegen.generateLLVM();
   
   llvmDiv.textContent = llvm.ir;
+  
 });
 
 document.querySelectorAll(".copy-btn").forEach(btn => {

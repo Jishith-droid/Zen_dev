@@ -1,4 +1,4 @@
-import { LLVM_TYPES_MAP, ZEN_TYPES_MAP, STD_FUNCTIONS, GLOBAL_EXTERNAL } from '/src/config/config.js';
+import { LLVM_TYPES_MAP, ZEN_TYPES_MAP, STD_FUNCTIONS_SCHEMA, GLOBAL_EXTERNAL, COMPOUND_OPERATORS } from '/src/config/config.js';
 
 export class IRBuilder {
   constructor() {
@@ -45,6 +45,11 @@ export class IRBuilder {
     this.usedStdlib = new Map();
   }
   
+  emitExpr(expr) {
+    if (expr?.local.length) this.emit(expr.local.join("\n"));
+    if (expr?.global.length) this.globals.push(expr.global.join("\n"));
+  }
+  
   enterFunction(name) {
     this.runtimeStack.push(name);
   }
@@ -55,21 +60,6 @@ export class IRBuilder {
   
   setCall(expr) {
     this.expr = expr;
-  }
-  
-  // templates
-  emitAlloca(type, name) {
-    this.emit(`${name} = alloca ${type}`);
-  }
-  
-  emitStore(type, value, ptr) {
-    this.emit(`store ${type} ${value}, ${type}* ${ptr}`);
-  }
-  
-  emitLoad(type, ptr) {
-    const t = this.newTemp();
-    this.emit(`${t} = load ${type}, ${type}* ${ptr}`);
-    return t;
   }
   
   setFunction(name, data) {
@@ -188,28 +178,22 @@ export class IRBuilder {
     }
     
     return {
-      b: current, // MEMBER_ACCESS or VARIABLE
+      b: current,
       indices: indices.reverse()
     };
   }
   
-  
-  /*  resolveMemberChainAssign(node) {
-      const chain = [];
-      
-      let current = node;
-      
-      while (current.type === "MEMBER_ACCESS") {
-        chain.unshift(current.field);
-        current = current.object;
-      }
-      
-      // base variable
-      return {
-        base: current.name,
-        fields: chain
-      };
-    }*/
+  getBaseArray(node) {
+    if (node.type === "variable") {
+      return node;
+    }
+    
+    if (node.type === "ARRAY_ACCESS") {
+      return this.getBaseArray(node.array);
+    }
+    
+    return null;
+  }
   
   resolveMemberChainAssign(node) {
     
@@ -220,10 +204,6 @@ export class IRBuilder {
       chain.unshift(current.field);
       current = current.object;
     }
-    
-    // =========================
-    // normalize base
-    // =========================
     
     let base;
     
@@ -236,7 +216,11 @@ export class IRBuilder {
     }
     
     else {
-      throw new Error(`[Zen Error] Invalid member base type: ${current.type}`);
+      this.emitError(
+        "TypeError",
+        `Cannot access members on type '${current.type}'`,
+        node
+      );
     }
     
     return {
@@ -346,7 +330,10 @@ export class IRBuilder {
     // debug flag
     if (this.DEBUG_IR) {
       if (target[target.length - 1] === line) {
-        console.warn("Duplicate IR:", line);
+        this.emitError(
+          "InternalError",
+          `Duplicate IR detected: ${line}`
+        );
       }
     }
     
@@ -462,12 +449,6 @@ export class IRBuilder {
       "";
   }
   
-  checkType(declaredType, type, node) {
-    if (declaredType !== type) {
-      this.emitError("TypeError", `expected ${declaredType} but got ${type}`, node);
-    }
-  }
-  
   // ===== SCOPES =====
   setVar(name, data) {
     
@@ -477,17 +458,6 @@ export class IRBuilder {
     }
     current.set(name, data);
   }
-  
-  /*  getVar(name) {
-      
-      for (let i = this.symbolTable.length - 1; i >= 0; i--) {
-        if (this.symbolTable[i].has(name)) {
-          return this.symbolTable[i].get(name);
-        }
-      }
-      this.emitError("ReferenceError", `${name} is not defined`);
-    }
-    */
   
   getVar(name, node) {
     
@@ -530,6 +500,84 @@ export class IRBuilder {
     );
     
     return tmp;
+  }
+  
+  getTypeSizeStruct(llvmType) {
+    
+    // pointer
+    if (llvmType.endsWith("*")) return 8;
+    
+    if (llvmType === "i1") return 1;
+    if (llvmType === "i8") return 1;
+    if (llvmType === "i32") return 4;
+    if (llvmType === "i64") return 8;
+    if (llvmType === "double") return 8;
+    if (llvmType === "ptr") return 8;
+    
+    // arrays like [10 x i32]
+    const arrMatch = llvmType.match(/\[(\d+)\s+x\s+(.+)\]/);
+    if (arrMatch) {
+      const len = parseInt(arrMatch[1]);
+      const elemType = arrMatch[2];
+      return len * this.getTypeSize(elemType);
+    }
+    
+    // struct (IMPORTANT FIX)
+    const structMatch = llvmType.match(/%(.+)/);
+    if (structMatch) {
+      const structName = structMatch[1];
+      const structInfo = this.getStruct(structName);
+      if (!structInfo) {
+        this.emitError(
+          "ReferenceError",
+          `Unknown struct type '${structName}'`,
+          node
+        );
+      }
+      return structInfo.byteSize;
+    }
+    
+    this.emitError(
+      "InternalError",
+      `Unknown type size for '${llvmType}'`,
+      node
+    );
+  }
+  
+  
+  getListDepth(g) {
+    
+    if (g.type !== "List") {
+      return 0;
+    }
+    
+    return 1 + this.getListDepth(g.generic);
+  };
+  
+  toBool(val, type) {
+    if (type === "bool") {
+      
+      return val;
+    }
+    
+    const t = this.newTemp();
+    
+    if (type === "int") {
+      this.emit(`${t} = icmp ne i32 ${val}, 0`);
+    }
+    else if (type === "double") {
+      this.emit(`${t} = fcmp one double ${val}, 0.0`);
+    }
+    else if (type === "string") {
+      const t0 = this.newTemp();
+      this.emit(`${t0} = load i8, i8* ${val}`);
+      this.emit(`${t} = icmp ne i8 ${t0}, 0`);
+    }
+    else {
+      this.emitError("TypeError", `Cannot convert ${type} to bool`, node);
+    }
+    
+    return t;
   }
   
   toBoolString(ptr) {
@@ -576,9 +624,8 @@ export class IRBuilder {
       this.errors.push({ type, message, node });
       this.hadError = true;
       this.printError(this.errors);
-      throw new Error()
     } else {
-      throw new Error(`[Zen Error] ${type}: ${message}`);
+      throw new Error(`[Zen Error] ${type}: ${message} at line ${node?.line}:${node?.column}`);
     }
   }
   
@@ -629,9 +676,8 @@ export class IRBuilder {
     for (const p of params) {
       const temp = this.newTemp();
       
-      // =========================
       // REST PARAM
-      // =========================
+      
       if (p.isRest) {
         
         
@@ -677,9 +723,8 @@ export class IRBuilder {
         continue;
       }
       
-      // =========================
       // ARRAY CHECK (use type tree safely)
-      // =========================
+      
       const isArray =
         p.type?.dimensions?.length > 0;
       
@@ -690,9 +735,8 @@ export class IRBuilder {
         );
       }
       
-      // =========================
       // FLATTEN TYPE → LLVM TYPE
-      // =========================
+      
       const llvmType = this.getLLVMType(p.type.type);
       
       paramStr.push(`${llvmType} ${temp}`);
@@ -751,61 +795,8 @@ export class IRBuilder {
       .replace(/\t/g, "\\09")
       .replace(/"/g, "\\22");
   }
-  /*
-  newGlobalString(str) {
-    
-    if (this.cachedStrings.has(str)) {
-      const string = this.cachedStrings.get(str);
-      
-      return string;
-    }
-    
-    let local = []
-    const escaped = this.escapeLLVMString(str);
-    const name = this.strTemp();
-    const len = this.utf8LenWithNull(str)
-    let ir;
-    
-    
-    this.globals.push(
-      `${name} = private unnamed_addr constant [${len} x i8] c"${escaped}\\00"`
-    );
-    
-    if (this.exported) {
-      ir = `getelementptr ([${len} x i8], [${len} x i8]* ${name}, i32 0, i32 0)`;
-    }
-    
-    const tmp = this.newTemp();
-    
-    local.push(
-      `${tmp} = getelementptr inbounds [${len} x i8], [${len} x i8]* ${name}, i32 0, i32 0`
-    );
-    
-    this.cachedStrings.set(str, {
-      name: tmp,
-      ir: ir ? ir : null,
-      local: [],
-      global: [],
-      rawStr: str
-    })
-    
-    this.emit(local)
-    
-    return {
-      name: tmp,
-      ir: ir ? ir : null,
-      local: [],
-      global: [],
-      rawStr: str
-    }
-  }
-  */
   
   newGlobalString(str) {
-    
-    // =========================
-    // CACHE HIT
-    // =========================
     
     if (this.cachedStrings.has(str)) {
       
@@ -815,7 +806,7 @@ export class IRBuilder {
       const tmp =
         this.newTemp();
       
-      const ir =  `getelementptr inbounds ` +
+      const ir = `getelementptr inbounds ` +
         `[${cached.len} x i8], ` +
         `[${cached.len} x i8]* ${cached.globalName}, ` +
         `i32 0, i32 0`;
@@ -831,9 +822,7 @@ export class IRBuilder {
       };
     }
     
-    // =========================
     // NEW STRING
-    // =========================
     
     const escaped =
       this.escapeLLVMString(str);
@@ -853,11 +842,11 @@ export class IRBuilder {
     const tmp =
       this.newTemp();
     
-    const ir =  `getelementptr inbounds ` +
+    const ir = `getelementptr inbounds ` +
       `[${len} x i8], ` +
       `[${len} x i8]* ${globalName}, ` +
       `i32 0, i32 0`;
-      
+    
     this.emit(`${tmp} = ${ir}`);
     
     // cache ONLY global data
@@ -879,9 +868,8 @@ export class IRBuilder {
     
     const params = fn.params;
     
-    // =========================================================
     // NORMAL CALL
-    // =========================================================
+    
     if (!isRest) {
       
       if (params.length !== args.length) {
@@ -892,21 +880,7 @@ export class IRBuilder {
       }
       
       for (let i = 0; i < params.length; i++) {
-        /*       
-               const expected =
-                 params[i].type.type === "List" ?
-                 params[i].type.generic.type :
-                 params[i].type.type;
-               
-               const actual = args[i]?.type;
-               
-               if (expected !== actual) {
-                 this.emitError(
-                   "TypeError",
-                   `${fn.name}() → expected ${expected} but got ${actual}`
-                 );
-               }
-               */
+        
         const expectedList =
           params[i].type.type === "List" ? "List" : params[i].type.type;
         
@@ -923,12 +897,10 @@ export class IRBuilder {
       return;
     }
     
-    // =========================================================
     // REST CALL (INDEX BASED)
-    // =========================================================
     
     if (restIndex === null || restIndex < 0) {
-      this.emitError("CompilerError", "invalid restIndex", node);
+      this.emitError("InternalError", "invalid restIndex", node);
     }
     
     // fixed params
@@ -944,7 +916,7 @@ export class IRBuilder {
       if (actual && expected !== actual) {
         this.emitError(
           "TypeError",
-          `${fn.name}() → expected ${expected} but got ${actual}`, node
+          `${fn.name}() expected ${expected} but got ${actual}`, node
         );
       }
     }
@@ -960,7 +932,7 @@ export class IRBuilder {
       if (actual !== restType) {
         this.emitError(
           "TypeError",
-          `${fn.name}() → rest expected ${restType} but got ${actual}`, node
+          `${fn.name}() rest expected ${restType} but got ${actual}`, node
         );
       }
     }
@@ -1116,7 +1088,6 @@ end:
       
       return {
         type: "VARIABLE_REFERENCE",
-        operation: "assign",
         dataType: data.type,
         isConstant: data.isConstant,
         name: expr.name,
@@ -1253,9 +1224,6 @@ end:
     
     // dimensions validation 
     
-    
-    // dimensions validation
-    
     const dims = dimensions.map(d => {
       if (d.type === "int") {
         return d.value;
@@ -1384,8 +1352,13 @@ end:
     if (type === "i32") return 4;
     if (type === "i64") return 8;
     if (type === "double") return 8;
-    if (type.endsWith("*")) return 8; // pointer
-    throw new Error("Unknown type size: " + type);
+    if (type.endsWith("*")) return 8; //pointer
+    if (type === "ptr") return 8;
+    this.emitError(
+      "InternalError",
+      `Unknown type size '${type}'`,
+      node
+    );
   }
   
   getElementType(typeStr) {
@@ -1447,9 +1420,8 @@ end:
         };
       }
     
-    // ---------------------------
-    // INT → BOOL
-    // ---------------------------
+    // INT  BOOL
+    
     if (expr.type === "int" && targetType === "bool") {
       this.emit(`${t} = icmp ne i32 ${expr.ptr}, 0`);
       
@@ -1460,9 +1432,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // BOOL → INT
-    // ---------------------------
+    // BOOL  INT
+    
     if (expr.type === "bool" && targetType === "int") {
       this.emit(`${t} = zext i1 ${expr.ptr} to i32`);
       
@@ -1473,9 +1444,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // INT → DOUBLE
-    // ---------------------------
+    // INT  DOUBLE
+    
     if (expr.type === "int" && targetType === "double") {
       this.emit(`${t} = sitofp i32 ${expr.ptr} to double`);
       
@@ -1499,9 +1469,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // BOOL → DOUBLE
-    // ---------------------------
+    // BOOL  DOUBLE
+    
     if (expr.type === "bool" && targetType === "double") {
       const intTemp = this.newTemp();
       
@@ -1518,9 +1487,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // DOUBLE → BOOL
-    // ---------------------------
+    // DOUBLE  BOOL
+    
     if (expr.type === "double" && targetType === "bool") {
       const t = this.newTemp();
       
@@ -1533,9 +1501,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // INT → STRING
-    // ---------------------------
+    // INT STRING
+    
     if (expr.type === "int" && targetType === "string") {
       this.declareOneTime("int_to_string", "declare i8* @int_to_string(i32)");
       
@@ -1548,9 +1515,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // DOUBLE → STRING
-    // ---------------------------
+    // DOUBLE  STRING
+    
     if (expr.type === "double" && targetType === "string") {
       this.declareOneTime("double_to_string", "declare i8* @double_to_string(double)");
       
@@ -1563,9 +1529,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // BOOL → STRING
-    // ---------------------------
+    // BOOL  STRING
+    
     if (expr.type === "bool" && targetType === "string") {
       this.declareOneTime("bool_to_string", "declare i8* @bool_to_string(i1)");
       this.emit(`${t} = call i8* @bool_to_string(i1 ${expr.ptr})`);
@@ -1577,9 +1542,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // STRING → INT
-    // ---------------------------
+    // STRING INT
+    
     if (expr.type === "string" && targetType === "int") {
       this.declareOneTime("string_to_int", "declare i32 @string_to_int(i8*)");
       
@@ -1592,9 +1556,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // STRING → DOUBLE
-    // ---------------------------
+    // STRING  DOUBLE
+    
     if (expr.type === "string" && targetType === "double") {
       this.declareOneTime("string_to_double", "declare double @string_to_double(i8*)");
       
@@ -1607,9 +1570,8 @@ end:
       };
     }
     
-    // ---------------------------
-    // STRING → BOOL
-    // ---------------------------
+    // STRING  BOOL
+    
     if (expr.type === "string" && targetType === "bool") {
       const len = this.newTemp();
       const res = this.newTemp();
@@ -1625,8 +1587,10 @@ end:
       };
     }
     
-    throw new Error(
-      `Zen TypeError: cannot cast ${expr.type} → ${targetType}`
+    this.emitError(
+      "TypeError",
+      `Cannot cast '${expr.type}' to '${targetType}'`,
+      node
     );
   }
   
@@ -1810,7 +1774,7 @@ end:
       
       if (this.functions.has(name)) continue;
       
-      const fn = STD_FUNCTIONS[name];
+      const fn = STD_FUNCTIONS_SCHEMA[name];
       
       if (!fn) {
         console.log("Missing stdlib:", name);
@@ -1867,9 +1831,8 @@ end:
     
     for (const prop of mapLiteral.properties) {
       
-      // =========================
       // NESTED MAP
-      // =========================
+      
       if (prop.value.type === "MAP_LITERAL") {
         
         layout[prop.key] = {
@@ -1880,9 +1843,8 @@ end:
         };
       }
       
-      // =========================
       // LIST
-      // =========================
+      
       else if (prop.value.type === "ARRAY") {
         
         const inferArrayType = (arr) => {
@@ -1898,21 +1860,6 @@ end:
             };
           }
           
-          // nested array
-          /*  if (first.type === "ARRAY") {
-              const nested = inferArrayType(first);
-              
-              return {
-                type: nested.type,
-                llvmType: nested.llvmType,
-                isList: true,
-                elementType: {
-                  type: "List",
-                  llvmType: "ptr",
-                  isList: true
-                } 
-              };
-            }*/
           
           if (first.type === "ARRAY") {
             
@@ -1945,22 +1892,13 @@ end:
         
       }
       
-      // =========================
       // NORMAL VALUE
-      // =========================
+      
       else {
-        /*
-        layout[prop.key] = {
-          type: prop.value.type,
-          llvmType: this.getLLVMType(prop.value.type),
-          isMap: false
-        };
-        */
+        
         const expr = this.expr.handleExpression(prop.value);
         
-        // =========================
         // MAP/LIST VARIABLE REF
-        // =========================
         
         if (expr.isVarRef && (expr.isMap || expr.isList)) {
           
@@ -1989,9 +1927,7 @@ end:
           }
         }
         
-        // =========================
         // NORMAL VALUE
-        // =========================
         
         else {
           
@@ -2007,11 +1943,6 @@ end:
     return layout;
   }
   
-  
-  
-  
-  
-  
   buildMapRecursive(
     parentMapPtr,
     mapLiteral
@@ -2022,24 +1953,16 @@ end:
     );
     for (const prop of mapLiteral.properties) {
       
-      // =====================================================
       // GLOBAL KEY STRING
-      // =====================================================
       
       const keyPtr =
         this.newGlobalString(
           prop.key
         );
       
-      /*if (keyPtr.local.length) {
-        this.emit(keyPtr.local)
-      }*/
-      
       let valuePtr;
       
-      // =====================================================
       // NESTED MAP
-      // =====================================================
       
       if (
         prop.value.type === "MAP_LITERAL"
@@ -2061,9 +1984,7 @@ end:
         valuePtr = nestedMapPtr;
       }
       
-      // =====================================================
       // NORMAL EXPRESSION
-      // =====================================================
       
       else {
         
@@ -2073,56 +1994,7 @@ end:
             prop.value
           );
         
-        /*  if (value.isMap) {
-            valuePtr = value.ptr;
-          }
-          
-          // local IR
-          if (
-            value.local &&
-            value.local.length
-          ) {
-            
-            this.emit(
-              value.local.join("\n")
-            );
-          }
-          
-          // global IR
-          if (
-            value.global &&
-            value.global.length
-          ) {
-            
-            this.globals.push(
-              value.global.join("\n")
-            );
-          }
-          
-          valuePtr =
-            this.castToPtr(value);
-            */
-        
-        
-        if (
-          value.local &&
-          value.local.length
-        ) {
-          
-          this.emit(
-            value.local.join("\n")
-          );
-        }
-        
-        if (
-          value.global &&
-          value.global.length
-        ) {
-          
-          this.globals.push(
-            value.global.join("\n")
-          );
-        }
+        this.emitExpr(value);
         
         if (value?.needsLoad) {
           const t = this.newTemp();
@@ -2134,9 +2006,7 @@ end:
         
       }
       
-      // =====================================================
       // MAP SET
-      // =====================================================
       
       this.emit(
         `call void @zen_map_set(` +
@@ -2148,166 +2018,6 @@ end:
     }
   }
   
-  /* 
-  castToPtr(value) {
-    
-    const type = value.llvmType;
-    const isList = value.isList;
-    const isMap = value.isMap;
-    const isListAccess = value.isListAccess;
-    const vptr = value.ptr;
-    
-   if (isListAccess) {
-
-  if (type === "i32") {
-
-    const loaded = this.newTemp();
-
-    this.emit(
-      `${loaded} = load i32, ptr ${value.addr}`
-    );
-
-    const ext = this.newTemp();
-
-    this.emit(
-      `${ext} = sext i32 ${loaded} to i64`
-    );
-
-    const boxed = this.newTemp();
-
-    this.emit(
-      `${boxed} = inttoptr i64 ${ext} to ptr`
-    );
-
-    return boxed;
-  }
-
-  if (type === "bool") {
-
-    const loaded = this.newTemp();
-
-    this.emit(
-      `${loaded} = load i1, ptr ${value.addr}`
-    );
-
-    const zext = this.newTemp();
-
-    this.emit(
-      `${zext} = zext i1 ${loaded} to i64`
-    );
-
-    const boxed = this.newTemp();
-
-    this.emit(
-      `${boxed} = inttoptr i64 ${zext} to ptr`
-    );
-
-    return boxed;
-  }
-
-  if (type === "double") {
-
-    const loaded = this.newTemp();
-
-    this.emit(
-      `${loaded} = load double, ptr ${value.addr}`
-    );
-
-    const bits = this.newTemp();
-
-    this.emit(
-      `${bits} = bitcast double ${loaded} to i64`
-    );
-
-    const boxed = this.newTemp();
-
-    this.emit(
-      `${boxed} = inttoptr i64 ${bits} to ptr`
-    );
-
-    return boxed;
-  }
-
-  return value.addr;
-}
-
-    // already ptr
-    if (
-      type === "ptr" ||
-      type === "string" ||
-      type === "Map" ||
-      type === "List" || isList
-    ) {
-      return vptr;
-    }
-    
-    // =========================================
-    // INT
-    // =========================================
-    
-    if (type === "i32") {
-      
-      const tmp =
-        this.newTemp();
-      
-      this.emit(
-        `${tmp} = inttoptr i64 ${vptr} to ptr`
-      );
-      
-      return tmp;
-    }
-    
-    // =========================================
-    // BOOL
-    // =========================================
-    
-    if (type === "bool") {
-      
-      const zext =
-        this.newTemp();
-      
-      this.emit(
-        `${zext} = zext i1 ${vptr} to i64`
-      );
-      
-      const ptr =
-        this.newTemp();
-      
-      this.emit(
-        `${ptr} = inttoptr i64 ${zext} to ptr`
-      );
-      
-      return ptr;
-    }
-    
-    // =========================================
-    // DOUBLE
-    // =========================================
-    
-    if (type === "double") {
-      
-      const bits =
-        this.newTemp();
-      
-      this.emit(
-        `${bits} = bitcast double ${vptr} to i64`
-      );
-      
-      const ptr =
-        this.newTemp();
-      
-      this.emit(
-        `${ptr} = inttoptr i64 ${bits} to ptr`
-      );
-      
-      return ptr;
-    }
-    
-    throw new Error(
-      `[Zen Error] Cannot cast ${type} to ptr`
-    );
-  }
-  */
   
   castToPtr(value) {
     
@@ -2329,9 +2039,7 @@ end:
       return isListAccess ? value.addr : vptr;
     }
     
-    // =========================================
     // INT
-    // =========================================
     
     if (type === "int") {
       
@@ -2351,9 +2059,7 @@ end:
       return box;
     }
     
-    // =========================================
     // BOOL
-    // =========================================
     
     if (type === "bool") {
       
@@ -2373,9 +2079,7 @@ end:
       return box;
     }
     
-    // =========================================
     // DOUBLE
-    // =========================================
     
     if (type === "double") {
       
@@ -2395,14 +2099,12 @@ end:
       return box;
     }
     
-    throw new Error(
-      `[Zen Error] Cannot cast ${type} to ptr`
+    this.emitError(
+      "TypeError",
+      `Cannot cast '${type}' to ptr`,
+      node
     );
   }
-  
-  
-  
-  
   
   handleListProperty(listPtr, object, field, node, fromMap = false, freeField = null) {
     
@@ -2480,7 +2182,8 @@ end:
         const llvmType = this.getListElementLLVM(object.generic);
         
         const tmp = this.newTemp();
-        this.emitAlloca(llvmType, tmp);
+        this.emit(`${tmp} = alloca ${llvmType}`);
+        
         let t;
         
         if (arg.needsLoad) {
@@ -2509,7 +2212,7 @@ end:
         const llvmType = this.getListElementLLVM(object.generic);
         
         const out = this.newTemp();
-        this.emitAlloca(llvmType, out);
+        this.emit(`${out} = alloca ${llvmType}`);
         
         this.emit(
           `call void @zen_list_pop(ptr ${listPtr}, ptr ${out})`
@@ -2540,9 +2243,7 @@ end:
           );
         }
         
-        if (index.local?.length) {
-          this.emit(index.local.join("\n"));
-        }
+        this.emitExpr(index)
         
         this.emit(
           `call void @zen_list_remove(ptr ${listPtr}, i32 ${index.ptr})`
@@ -2607,7 +2308,7 @@ end:
         const llvmType = this.getListElementLLVM(object.generic);
         
         const tmp = this.newTemp();
-        this.emitAlloca(llvmType, tmp);
+        this.emit(`${tmp} = alloca ${llvmType}`);
         
         this.emit(`store ${llvmType} ${arg.ptr}, ptr ${tmp}`);
         
@@ -2720,6 +2421,46 @@ end:
     
     return node;
   }
+  
+normalizeUpdateToExpr(update, loopVarName) {
+    
+    // 1. i++ / i--
+    if (update.type === "UNARY_EXPRESSION") {
+        const op = update.operator === "++" ? "+" : "-";
+        return {
+            type: "ASSIGNMENT",
+            name: update.argument.name,
+            operator: "=",
+            value: {
+                type: "BINARY_EXPRESSION",
+                left: {
+                    type: "variable",
+                    name: update.argument.name
+                },
+                operator: op,
+                right: {
+                    type: "int",
+                    value: 1
+                }
+            }
+        };
+    }
+    
+    // 2. i += 3, i -= 3, etc — normalize compound to plain assignment
+    if (update.type === "ASSIGNMENT" && update.operator) {
+        if (COMPOUND_OPERATORS.includes(update.operator)) {
+            return this.normalizeCompound(update);
+        }
+        // plain i = expr — already an assignment, pass through
+        return update;
+    }
+    
+    this.IRB.emitError(
+        "SyntaxError",
+        `Invalid update expression in loop`,
+        update
+    );
+}
   
   getDeepestGeneric(generic) {
     let cur = generic;

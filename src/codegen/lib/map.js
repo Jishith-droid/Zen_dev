@@ -5,23 +5,19 @@ export class ZenMap {
     this.expr = expr;
   }
   
-  // =====================================================
   // MAP DECLARATION
-  // =====================================================
   
   handleMap(node, globalScope) {
     
     this.IRB.guardStackOp("MAP", node);
-    
-    // =====================================================
+    this.IRB.guardGlobal(node.name, node);
     // DECLARE RUNTIME
-    // =====================================================
     
     this.IRB.declareOneTime(
       "zen_map_new",
       "declare ptr @zen_map_new()"
     );
-
+    
     
     const name = node.name;
     const gName = this.IRB.newGlobalTemp();
@@ -32,15 +28,10 @@ export class ZenMap {
       const expr = this.expr.handleExpression(node.value);
       
       if (!expr.isMap) {
-        this.IRB.emitError("TypeError", `Map ${name} expected type Map but got ${expr.type}`, node);
+        this.IRB.emitError("TypeError", `Map ${name} expected Map but got ${expr.type}`, node);
       }
       
-      if (expr?.local.length) {
-        this.IRB.emit(expr.local.join("\n"));
-      }
-      if (expr?.global.length) {
-        this.IRB.globals.push(expr.global.join("\n"));
-      }
+      this.IRB.emitExpr(expr);
       
       
       if (globalScope) {
@@ -63,7 +54,7 @@ export class ZenMap {
           isGlobal: globalScope,
           needsLoad: true,
           name,
-          layout: expr.layout
+          layout: expr?.layout
         })
       );
       
@@ -82,12 +73,11 @@ export class ZenMap {
       layout
     );
     
-    // =====================================================
     // CREATE ROOT MAP
-    // =====================================================
+    
     const mapPtr =
       this.IRB.newTemp();
-   const t = this.IRB.newTemp();
+    
     if (globalScope) {
       this.IRB.globals.push(`${gName} = global ptr null`);
       this.IRB.emit(
@@ -104,10 +94,7 @@ export class ZenMap {
       
     }
     
-    
-    // =====================================================
     // REGISTER VARIABLE
-    // =====================================================
     
     this.IRB.setVar(
       name,
@@ -123,9 +110,8 @@ export class ZenMap {
       })
     );
     
-    // =====================================================
+    
     // EMPTY MAP
-    // =====================================================
     
     if (
       !node.value ||
@@ -135,9 +121,7 @@ export class ZenMap {
       return;
     }
     
-    // =====================================================
     // INITIALIZE VALUES
-    // =====================================================
     
     this.IRB.buildMapRecursive(
       mapPtr,

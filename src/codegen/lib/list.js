@@ -27,39 +27,15 @@ export class ZenList {
     
     this.IRB.guardGlobal(name, node);
     
-    // =========================================
-    // HELPERS
-    // =========================================
-    
-    const getDeepestType = (g) => {
-      
-      if (g.type === "List") {
-        return getDeepestType(g.generic);
-      }
-      
-      return g.type;
-    };
-    
-    const getListDepth = (g) => {
-      
-      if (g.type !== "List") {
-        return 0;
-      }
-      
-      return 1 + getListDepth(g.generic);
-    };
-    
-    // =========================================
     // TYPES
-    // =========================================
     
-    const listLLVM = "%ZenList*";
+    const listLLVM = "%ZenList*"; // fixed
     
     const deepestType =
-      getDeepestType(node.generic);
+      this.IRB.getDeepestGeneric(node.generic);
     
     const depth =
-      getListDepth(node.generic);
+      this.IRB.getListDepth(node.generic);
     
     const type =
       deepestType;
@@ -69,17 +45,13 @@ export class ZenList {
       8 :
       this.IRB.sizeOf(deepestType);
     
-    // =========================================
     // PTR
-    // =========================================
     
     const ptr = globalScope ?
       this.IRB.newGlobalTemp() :
       this.IRB.newTemp();
     
-    // =========================================
     // RECURSIVE PUSH
-    // =========================================
     
     const pushRecursive = (
       listPtr,
@@ -87,9 +59,7 @@ export class ZenList {
       generic
     ) => {
       
-      // =====================================
       // NESTED LIST
-      // =====================================
       
       if (
         element.type === "ARRAY" ||
@@ -108,19 +78,17 @@ export class ZenList {
           generic.generic;
         
         const innerDepth =
-          getListDepth(innerGeneric);
+          this.IRB.getListDepth(innerGeneric);
         
         const innerDeepest =
-          getDeepestType(innerGeneric);
+          this.IRB.getDeepestGeneric(innerGeneric);
         
         const innerSize =
           innerDepth > 1 ?
           8 :
           this.IRB.sizeOf(innerDeepest);
         
-        // =====================================
-        // CREATE CHILD LIST
-        // =====================================
+        // CREATE CHILD LIST 
         
         const childList =
           this.IRB.newTemp();
@@ -129,9 +97,7 @@ export class ZenList {
           `${childList} = call ptr @zen_list_new(i64 ${innerSize})`
         );
         
-        // =====================================
         // PUSH CHILD ELEMENTS
-        // =====================================
         
         for (const child of element.elements) {
           
@@ -142,28 +108,20 @@ export class ZenList {
           );
         }
         
-        // =====================================
         // STORE CHILD PTR
-        // =====================================
         
         const tmp =
           this.IRB.newTemp();
         
-        this.IRB.emitAlloca(
-          "ptr",
-          tmp
+        this.IRB.emit(
+          `${tmp} = alloca ptr`
         );
         
         this.IRB.emit(
           `store ptr ${childList}, ptr ${tmp}`
         );
         
-        
-        
-        
-        // =====================================
         // PUSH CHILD LIST
-        // =====================================
         
         this.IRB.emit(
           `call void @zen_list_push(` +
@@ -176,24 +134,12 @@ export class ZenList {
         return;
       }
       
-      // =====================================
       // NORMAL VALUE
-      // =====================================
       
       const expr =
         this.expr.handleExpression(element);
       
-      if (expr.local?.length) {
-        this.IRB.emit(
-          expr.local.join("\n")
-        );
-      }
-      
-      if (expr.global?.length) {
-        this.IRB.globals.push(
-          expr.global.join("\n")
-        );
-      }
+      this.IRB.emitExpr(expr);
       
       const actualGeneric =
         generic.type === "List" ?
@@ -206,15 +152,12 @@ export class ZenList {
       const tmp =
         this.IRB.newTemp();
       
-      this.IRB.emitAlloca(
-        elementLLVM,
-        tmp
+      this.IRB.emit(
+        `${tmp} = alloca ${elementLLVM}`
       );
       
-      this.IRB.emitStore(
-        elementLLVM,
-        expr.ptr,
-        tmp
+      this.IRB.emit(
+        `store ${elementLLVM} ${expr.ptr}, ptr ${tmp}`
       );
       
       this.IRB.emit(
@@ -225,9 +168,7 @@ export class ZenList {
       );
     };
     
-    // =========================================
     // DETECT LIST LITERAL
-    // =========================================
     
     const isLiteralList =
       node.value &&
@@ -237,12 +178,11 @@ export class ZenList {
     
     let rootList = null;
     
-    // =========================================
+    
     // NORMAL EXPRESSION
     // List<int> a = other
     // List<int> a = fn()
     // List<int> a = b.pop()
-    // =========================================
     
     if (!isLiteralList && node.value) {
       
@@ -251,7 +191,7 @@ export class ZenList {
       
       const isValidList =
         expr.isList;
-        
+      
       if (!isValidList) {
         const got =
           expr.isMap ? "Map" :
@@ -268,17 +208,7 @@ export class ZenList {
         this.IRB.emitError("TypeError", `List ${name} expected ${type} but got ${expr.type}`, node)
       }
       
-      if (expr.local?.length) {
-        this.IRB.emit(
-          expr.local.join("\n")
-        );
-      }
-      
-      if (expr.global?.length) {
-        this.IRB.globals.push(
-          expr.global.join("\n")
-        );
-      }
+      this.IRB.emitExpr(expr);
       
       let t;
       if (expr.isVarRef) {
@@ -289,9 +219,7 @@ export class ZenList {
       rootList = t ? t : expr.ptr;
     }
     
-    // =========================================
     // REAL LIST LITERAL
-    // =========================================
     
     else {
       
@@ -305,23 +233,23 @@ export class ZenList {
       rootList = listTemp;
       
       const validate = (el, expectedType) => {
-
-  // if it's a list → go deeper
-  if (el.type === "ARRAY" || el.type === "LIST") {
-    for (const sub of el.elements) {
-      validate(sub, expectedType);
-    }
-    return;
-  }
-
-  // leaf check
-  if (el.type !== expectedType) {
-    this.IRB.emitError(
-      "TypeError",
-      `List ${name} expected ${expectedType} but got ${el.type}`, node
-    );
-  }
-};
+        
+        // if it's a list → go deeper
+        if (el.type === "ARRAY" || el.type === "LIST") {
+          for (const sub of el.elements) {
+            validate(sub, expectedType);
+          }
+          return;
+        }
+        
+        // leaf check
+        if (el.type !== expectedType) {
+          this.IRB.emitError(
+            "TypeError",
+            `List ${name} expected ${expectedType} but got ${el.type}`, node
+          );
+        }
+      };
       
       if (
         node.value &&
@@ -342,9 +270,7 @@ export class ZenList {
       }
     }
     
-    // =========================================
     // STORE VARIABLE PTR
-    // =========================================
     
     if (globalScope) {
       
@@ -360,9 +286,8 @@ export class ZenList {
     
     else {
       
-      this.IRB.emitAlloca(
-        "ptr",
-        ptr
+      this.IRB.emit(
+        `${ptr} = alloca ptr`
       );
       
       this.IRB.emit(
@@ -370,9 +295,7 @@ export class ZenList {
       );
     }
     
-    // =========================================
     // SYMBOL TABLE
-    // =========================================
     
     this.IRB.setVar(
       name,
@@ -389,6 +312,5 @@ export class ZenList {
       })
     );
     
-    this.IRB.logSymbolTable();
   }
 }

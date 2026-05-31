@@ -7,14 +7,16 @@ export class InferType {
   infer(node) {
     
     if (!node) {
-      throw new Error("Invalid AST node");
+      this.IRB.emitError(
+        "InternalError",
+        "Invalid AST node",
+        node
+      );
     }
     
     switch (node.type) {
       
-      // =========================
       // LITERALS
-      // =========================
       
       case "int":
         node.inferredType = "int";
@@ -32,16 +34,18 @@ export class InferType {
         node.inferredType = "string";
         return "string";
         
-        // =========================
         // VARIABLE
-        // =========================
         
       case "variable": {
         const data = this.IRB.getVar(node.name, node);
         const type = data.type;
         
         if (!type) {
-          throw new Error(`Undefined variable '${node.name}'`);
+          this.IRB.emitError(
+            "ReferenceError",
+            `Undefined variable '${node.name}'`,
+            node
+          );
         }
         
         if (data.isList) {
@@ -118,44 +122,12 @@ export class InferType {
         return type;
       }
       
-      /*  case "MEMBER_ACCESS": {
-          
-          const { base, fields } =
-          this.IRB.resolveMemberChain(node);
-          
-          let currentType =
-            this.IRB.getVar(base.name).type;
-          
-          let fieldInfo;
-          
-          for (const field of fields) {
-            
-            const structInfo =
-              this.IRB.getStruct(currentType);
-            
-            const fieldIndex =
-              structInfo.fieldMap[field];
-            
-            fieldInfo =
-              structInfo.layout[fieldIndex];
-            
-            currentType =
-              fieldInfo.type;
-          }
-          
-          return fieldInfo.type;
-        }
-        */
-      
-      
       case "MEMBER_ACCESS": {
         
         const { base, fields } =
         this.IRB.resolveMemberChain(node);
         
-        // =========================
         // MAP ACCESS
-        // =========================
         
         if (base.type === "variable") {
           
@@ -173,8 +145,10 @@ export class InferType {
             for (const field of fields) {
               
               if (!currentLayout[field]) {
-                throw new Error(
-                  `[Zen Error] Map field '${field}' does not exist`
+                this.IRB.emitError(
+                  "ReferenceError",
+                  `Unknown map field '${field}'`,
+                  node
                 );
               }
               
@@ -192,9 +166,7 @@ export class InferType {
           }
         }
         
-        // =========================
         // STRUCT ACCESS
-        // =========================
         
         let currentType =
           this.IRB.getVar(base.name, node).type;
@@ -219,10 +191,7 @@ export class InferType {
         return fieldInfo.type;
       }
       
-      
-      // =========================
       // FUNCTION CALL
-      // =========================
       
       case "CALL": {
         
@@ -233,8 +202,10 @@ export class InferType {
             this.IRB.getFunction(node.name);
           
           if (!fn) {
-            throw new Error(
-              `Function '${node.name}' not found`
+            this.IRB.emitError(
+              "ReferenceError",
+              `Function '${node.name}' not found`,
+              node
             );
           }
           
@@ -267,8 +238,10 @@ export class InferType {
             this.IRB.getFunction(fullMethodName);
           
           if (!fn) {
-            throw new Error(
-              `Method '${fullMethodName}' not found`
+            this.IRB.emitError(
+              "ReferenceError",
+              `Method '${fullMethodName}' not found`,
+              node
             );
           }
           
@@ -279,9 +252,7 @@ export class InferType {
         }
       }
       
-      // =========================
       // ARRAY
-      // =========================
       
       case "ARRAY": {
         
@@ -299,8 +270,10 @@ export class InferType {
           const currentType = this.infer(el);
           
           if (currentType !== firstType) {
-            throw new Error(
-              `Array element type mismatch '${currentType}' != '${firstType}'`
+            this.IRB.emitError(
+              "TypeError",
+              `Array element type mismatch '${currentType}' != '${firstType}'`,
+              node
             );
           }
         }
@@ -310,9 +283,7 @@ export class InferType {
         return firstType;
       }
       
-      // =========================
       // BINARY EXPRESSION
-      // =========================
       
       case "BINARY_EXPRESSION": {
         const leftType = this.infer(node.left);
@@ -320,9 +291,7 @@ export class InferType {
         
         const op = node.operator;
         
-        // -------------------------
         // ARITHMETIC
-        // -------------------------
         
         if (["+", "-", "*", "/", "%"].includes(op)) {
           
@@ -344,9 +313,7 @@ export class InferType {
           return "int";
         }
         
-        // -------------------------
         // COMPARISON
-        // -------------------------
         
         if (["==", "!=", ">", "<", ">=", "<="].includes(op)) {
           
@@ -355,21 +322,23 @@ export class InferType {
           return "bool";
         }
         
-        // -------------------------
         // LOGICAL
-        // -------------------------
         
         if (["&&", "||"].includes(op)) {
           
           if (leftType !== "bool") {
-            throw new Error(
-              `Logical operator '${op}' requires bool left operand`
+            this.IRB.emitError(
+              "TypeError",
+              `Logical operator '${op}' requires boolean left operand`,
+              node
             );
           }
           
           if (rightType !== "bool") {
-            throw new Error(
-              `Logical operator '${op}' requires bool right operand`
+            this.IRB.emitError(
+              "TypeError",
+              `Logical operator '${op}' requires boolean right operand`,
+              node
             );
           }
           
@@ -378,12 +347,14 @@ export class InferType {
           return "bool";
         }
         
-        throw new Error(`Unknown operator '${op}'`);
+        this.IRB.emitError(
+          "SyntaxError",
+          `Unknown operator '${op}'`,
+          node
+        );
       }
       
-      // =========================
       // UNARY EXPRESSION
-      // =========================
       
       case "UNARY_EXPRESSION": {
         const valueType = this.infer(node.argument);
@@ -409,7 +380,11 @@ export class InferType {
           return valueType;
         }
         
-        throw new Error(`Unknown unary operator '${node.operator}'`);
+        this.IRB.emitError(
+          "SyntaxError",
+          `Unknown unary operator '${node.operator}'`,
+          node
+        );
       }
       
       case "TERNARY": {
@@ -417,15 +392,21 @@ export class InferType {
         const conditionType = this.infer(node.condition);
         
         if (conditionType !== "bool") {
-          throw new Error("Ternary condition must be bool");
+          this.IRB.emitError(
+            "TypeError",
+            "Ternary condition must be bool",
+            node
+          );
         }
         
         const leftType = this.infer(node.trueExpr);
         const rightType = this.infer(node.falseExpr);
         
         if (leftType !== rightType) {
-          throw new Error(
-            `Ternary type mismatch '${leftType}' != '${rightType}'`
+          this.IRB.emitError(
+            "TypeError",
+            `Ternary type mismatch '${leftType}' != '${rightType}'`,
+            node
           );
         }
         
@@ -433,9 +414,7 @@ export class InferType {
         return leftType;
       }
       
-      // =========================
       // VARIABLE DECLARATION
-      // =========================
       
       case "VARIABLE_DECLARATION": {
         
@@ -461,8 +440,10 @@ export class InferType {
           const valueType = this.infer(node.value);
           
           if (valueType !== finalType) {
-            throw new Error(
-              `Cannot assign '${valueType}' to '${finalType}'`
+            this.IRB.emitError(
+              "TypeError",
+              `Cannot assign '${valueType}' to '${finalType}'`,
+              node
             );
           }
         }
@@ -483,8 +464,10 @@ export class InferType {
   
   ensureNumeric(type, op) {
     if (!this.numericTypes.includes(type)) {
-      throw new Error(
-        `Operator '${op}' requires numeric types. Got '${type}'`
+      this.IRB.emitError(
+        "TypeError",
+        `Operator '${op}' requires numeric types. Got '${type}'`,
+        node
       );
     }
     return type;

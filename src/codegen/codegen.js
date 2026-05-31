@@ -24,7 +24,7 @@ import { ZenFileSystem } from './lib/builtins/fileSystem/file.js';
 import { IO } from './lib/builtins/io/io.js';
 import { ZenString } from './lib/builtins/string/string.js';
 
-import { SCALAR_TYPES, VOID_BUILTIN_FUNCTIONS, GLOBAL_EXTERNAL, STD_FUNCTIONS, BUILTIN_FUNCTIONS, STDLIB, BUILTIN_MAP, RESERVED_FUNCTIONS, COMPOUND_OPERATORS } from '/src/config/config.js';
+import { SCALAR_TYPES, VOID_BUILTIN_FUNCTIONS, GLOBAL_EXTERNAL, STD_FUNCTIONS_SCHEMA, BUILTIN_FUNCTIONS, BUILTIN_MAP, RESERVED_FUNCTIONS, COMPOUND_OPERATORS } from '/src/config/config.js';
 
 export class CodeGen {
   constructor(ast) {
@@ -50,7 +50,7 @@ export class CodeGen {
     this.error = new ZenError(this.IRB, this.io);
     this.type = new Type(this.IRB, this.expr);
     this.string = new ZenString(this.IRB, this.expr);
-    this.call = new Call(this.IRB, this.expr, this.io, this.type, this.string, STDLIB, this.error, this.file, this.os, this.time, this.network, this.http, this.sys);
+    this.call = new Call(this.IRB, this.expr, this.io, this.type, this.string, this.error, this.file, this.os, this.time, this.network, this.http, this.sys);
     
     this.expr.setCall(this.call);
     this.call.setExpression(this.expr);
@@ -154,7 +154,7 @@ export class CodeGen {
       }
       
       if (!this.IRB.stdlibMode) {
-        for (const [name, fn] of Object.entries(STD_FUNCTIONS)) {
+        for (const [name, fn] of Object.entries(STD_FUNCTIONS_SCHEMA)) {
           
           if (!this.IRB.usedStdFunctions?.has(name)) continue;
           

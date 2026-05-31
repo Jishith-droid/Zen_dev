@@ -43,8 +43,7 @@ export class Loop {
     
     const expr = this.expr.handleExpression(condition, false);
     
-    if (expr.local?.length) this.IRB.emit(expr.local.join("\n"));
-    if (expr.global?.length) this.IRB.globals.push(expr.global.join("\n"));
+    this.IRB.emitExpr(expr);
     
     const condPtr =
       expr.llvmType === "i1" ?
@@ -58,35 +57,22 @@ export class Loop {
     
     this.block.block(node.body, false);
     
-    
     this.IRB.emit(`br label %${updateLabel}`);
     
     this.IRB.emit(`${updateLabel}:`);
     
-    let updateExpr;
+    const normalisedNode = this.IRB.normalizeUpdateToExpr(update, update.name);
     
-    if (update.type === "ASSIGNMENT") {
-      const ptr = this.IRB.getVar(update.name).ptr;
-      const type = this.IRB.getVar(update.name).type;
-      
-      updateExpr = this.expr.handleExpression(update.value, false);
-      
-      if (type !== updateExpr.type) {
-        this.IRB.emitError("TypeError", `variable ${update.name} expect ${type} but got ${updateExpr.type}`, node);
-      }
-      if (updateExpr.local.length) this.IRB.emit(updateExpr.local.join("\n"));
-      if (updateExpr.global.length) this.IRB.globals.push(updateExpr.global.join("\n"));
-      this.IRB.emitStore(updateExpr.llvmType, updateExpr.ptr, ptr);
-      
-    } else {
-      updateExpr = this.expr.handleExpression(update, false);
-      if (updateExpr.local.length) this.IRB.emit(updateExpr.local.join("\n"));
-      if (updateExpr.global.length) this.IRB.globals.push(updateExpr.global.join("\n"));
-    }
+    let updateExpr = this.expr.handleExpression(normalisedNode.value, false);
+    
+    this.IRB.emitExpr(updateExpr);
+    
+    const varPtr = this.IRB.getVar(normalisedNode.name).ptr;
+    
+    this.IRB.emit(`store ${updateExpr.llvmType} ${updateExpr.ptr}, ptr ${varPtr}`);
     
     // loop back
     this.IRB.emit(`br label %${condLabel}`);
-    
     
     // ===== end =====
     this.IRB.emit(`${endLabel}:`);
@@ -95,22 +81,22 @@ export class Loop {
     this.IRB.exitScope();
   }
   
-  handleBreak() {
+  handleBreak(node) {
     const loop = this.IRB.loopStack[this.IRB.loopStack.length - 1];
     
     if (!loop) {
-      this.IRB.emitError("SyntaxError", "break used outside loop");
+      this.IRB.emitError("SyntaxError", "break used outside loop", node);
     }
     
     this.IRB.loopBlockTerminated = true;
     this.IRB.emit(`br label %${loop.breakLabel}`);
   }
   
-  handleContinue() {
+  handleContinue(node) {
     const loop = this.IRB.loopStack[this.IRB.loopStack.length - 1];
     
     if (!loop) {
-      this.IRB.emitError("SyntaxError", "continue used outside loop");
+      this.IRB.emitError("SyntaxError", "continue used outside loop", node);
     }
     
     this.IRB.loopIterationSkipped = true;
@@ -138,13 +124,12 @@ export class Loop {
     // jump to condition first
     this.IRB.emit(`br label %${condLabel}`);
     
-    // ===== condition =====
+    // condition
     this.IRB.emit(`${condLabel}:`);
     
     const expr = this.expr.handleExpression(condition, false);
     
-    if (expr.local?.length) this.IRB.emit(expr.local.join("\n"));
-    if (expr.global?.length) this.IRB.globals.push(expr.global.join("\n"));
+    this.IRB.emitExpr(expr);
     
     const condPtr =
       expr.llvmType === "i1" ?
@@ -153,7 +138,7 @@ export class Loop {
     
     this.IRB.emit(`br i1 ${condPtr}, label %${bodyLabel}, label %${endLabel}`);
     
-    // ===== body =====
+    // body
     this.IRB.emit(`${bodyLabel}:`);
     
     this.block.block(body, false);
@@ -161,7 +146,7 @@ export class Loop {
     // loop back to condition 
     this.IRB.emit(`br label %${condLabel}`);
     
-    // ===== end =====
+    // end
     this.IRB.emit(`${endLabel}:`);
     
     this.IRB.loopStack.pop();
@@ -186,14 +171,12 @@ export class Loop {
       continueLabel: condLabel
     });
     
-    // =========================
-    // ENTRY → BODY FIRST (KEY DIFFERENCE)
-    // =========================
+    // ENTRY BODY FIRST 
+    
     this.IRB.emit(`br label %${bodyLabel}`);
     
-    // =========================
     // BODY
-    // =========================
+    
     this.IRB.emit(`${bodyLabel}:`);
     
     this.block.block(body, false);
@@ -201,15 +184,13 @@ export class Loop {
     // continue jumps here
     this.IRB.emit(`br label %${condLabel}`);
     
-    // =========================
     // CONDITION CHECK
-    // =========================
+    
     this.IRB.emit(`${condLabel}:`);
     
     const expr = this.expr.handleExpression(condition, false);
     
-    if (expr.local?.length) this.IRB.emit(expr.local.join("\n"));
-    if (expr.global?.length) this.IRB.globals.push(expr.global.join("\n"));
+    this.IRB.emitExpr(expr);
     
     const condPtr =
       expr.llvmType === "i1" ?
@@ -220,16 +201,13 @@ export class Loop {
       `br i1 ${condPtr}, label %${bodyLabel}, label %${endLabel}`
     );
     
-    // =========================
     // END
-    // =========================
+    
     this.IRB.emit(`${endLabel}:`);
     
     this.IRB.loopStack.pop();
     this.IRB.exitScope();
   }
-  
-  
   
   loopOf(node) {
     
@@ -249,17 +227,17 @@ export class Loop {
       continueLabel: incLabel
     });
     
-    // =========================
     // index = 0
-    // =========================
+    
     const indexPtr = this.IRB.newTemp();
     this.IRB.emit(`${indexPtr} = alloca i32`);
-    this.IRB.emitStore("i32", "0", indexPtr);
-    
-    // =========================
+
+    this.IRB.emit(`store i32 0, ptr ${indexPtr}`);
     // resolve iterable
-    // =========================
+    
     const expr = this.expr.handleExpression(iterable, false);
+    
+    this.IRB.emitExpr(expr);
     
     let varType = null;
     let llvmVarType = null;
@@ -277,7 +255,6 @@ export class Loop {
       varType = expr.type;
       llvmVarType = this.IRB.getLLVMType(varType);
     } else if (expr.isList) {
-      
       this.IRB.declareOneTime(
         "zen_list_get",
         "declare ptr @zen_list_get(ptr, i32)"
@@ -310,13 +287,12 @@ export class Loop {
     
     this.IRB.emit(`br label %${startLabel}`);
     
-    // =========================
     // CONDITION
-    // =========================
+    
     this.IRB.emit(`${startLabel}:`);
     
     const idxTmp = this.IRB.newTemp();
-    this.IRB.emit(`${idxTmp} = load i32, i32* ${indexPtr}`);
+    this.IRB.emit(`${idxTmp} = load i32, ptr ${indexPtr}`);
     
     const cmpTmp = this.IRB.newTemp();
     this.IRB.emit(
@@ -327,9 +303,8 @@ export class Loop {
       `br i1 ${cmpTmp}, label %${bodyLabel}, label %${endLabel}`
     );
     
-    // =========================
     // BODY
-    // =========================
+    
     this.IRB.emit(`${bodyLabel}:`);
     
     let elemTmp = this.IRB.newTemp();
@@ -339,6 +314,10 @@ export class Loop {
       this.IRB.emit(
         `${elemTmp} = getelementptr ${expr.llvmType}, ptr ${expr.ptr}, i32 0, i32 ${idxTmp}`
       );
+      
+      const ptr = this.IRB.newTemp();
+      this.IRB.emit(`${ptr} = alloca ${expr.llvmType}`);
+      this.IRB.emit(`store ${expr.llvmType} ${elemTmp}, ptr ${ptr}`);
       
       const valTmp = this.IRB.newTemp();
       
@@ -351,10 +330,7 @@ export class Loop {
       
       const isNested =
         expr.dimData?.length > 1;
-      /*const nestedLLVM =
-        isNested ?
-        `[${nextDims[0]} x ${llvmVarType}]` :
-        llvmVarType;*/
+      
       const nestedLLVM = isNested ?
         nextDims.reduceRight(
           (inner, dim) => `[${dim} x ${inner}]`,
@@ -364,10 +340,10 @@ export class Loop {
       if (isNested) {
         
         this.IRB.setVar(varName, {
-          ptr: elemTmp,
+          ptr,
           type: varType,
           llvmType: nestedLLVM,
-          needsLoad: false,
+          needsLoad: true,
           isArray: true,
           length: nextDims?.[0],
           dimensionsData: nextDims
@@ -381,11 +357,15 @@ export class Loop {
           `${valTmp} = load ${llvmVarType}, ptr ${elemTmp}`
         );
         
+        const ptr = this.IRB.newTemp();
+        this.IRB.emit(`${ptr} = alloca ${llvmVarType}`);
+        this.IRB.emit(`store ${llvmVarType} ${elemTmp}, ptr ${ptr}`);
+        
         this.IRB.setVar(varName, {
-          ptr: valTmp,
+          ptr,
           type: varType,
           llvmType: llvmVarType,
-          needsLoad: false,
+          needsLoad: true,
           isArray: false
         });
       }
@@ -431,9 +411,8 @@ export class Loop {
     
     this.IRB.emit(`br label %${incLabel}`);
     
-    // =========================
     // INCREMENT
-    // =========================
+    
     this.IRB.emit(`${incLabel}:`);
     
     const incTmp = this.IRB.newTemp();
@@ -441,13 +420,13 @@ export class Loop {
       `${incTmp} = add i32 ${idxTmp}, 1`
     );
     
-    this.IRB.emitStore("i32", incTmp, indexPtr);
+    this.IRB.emit(`store i32 ${incTmp}, ptr ${indexPtr}`);
     
     this.IRB.emit(`br label %${startLabel}`);
     
-    // =========================
+    
     // END
-    // =========================
+    
     this.IRB.emit(`${endLabel}:`);
     
     this.IRB.loopStack.pop();
@@ -460,13 +439,11 @@ export class Loop {
     this.IRB.guardStackOp("LOOP_IN", node);
     this.IRB.enterScope();
     
-    // =========================================
     // RESOLVE MAP POINTER
-    // =========================================
+    
     const expr = this.expr.handleExpression(iterable, false);
     
-    if (expr.local?.length) this.IRB.emit(expr.local.join("\n"));
-    if (expr.global?.length) this.IRB.globals.push(expr.global.join("\n"));
+    this.IRB.emitExpr(expr);
     
     let mapPtr = expr.ptr;
     
@@ -478,12 +455,11 @@ export class Loop {
     
     this.IRB.declareOneTime("zen_map_get", "declare ptr @zen_map_get(ptr, ptr)");
     
-    // =========================================
     // GET MAP LAYOUT
-    // =========================================
+    
     const mapLayout = this.IRB.maps.get(iterable.name) || expr?.layout;
     if (!mapLayout) {
-      this.IRB.emitError("RuntimeError", "Map iteration requires known key layout", node);
+      this.IRB.emitError("InternalError", "Map iteration requires known key layout", node);
       return;
     }
     
@@ -494,15 +470,15 @@ export class Loop {
     const allSame = keys.every(k => mapLayout[k].type === inferredType);
     
     const hasNestedMap = keys.some(k => mapLayout[k].type === "Map");
-
-if (hasNestedMap) {
-
-    this.IRB.emitError(
-      "TypeError",
-      "loop in doesn't support nested Map",
-      node
-    );
-  }
+    
+    if (hasNestedMap) {
+      
+      this.IRB.emitError(
+        "TypeError",
+        "loop in doesn't support nested Map",
+        node
+      );
+    }
     
     if (!allSame) {
       this.IRB.emitError(
@@ -511,18 +487,17 @@ if (hasNestedMap) {
         node
       );
     }
-    // =========================================
+    
     // PRE-INTERN ALL KEY STRINGS AS GLOBALS
-    // =========================================
+    
     const keyPtrs = keys.map((key) => {
       const keyPtr = this.IRB.newGlobalString(key);
-      /*  if (keyPtr.local?.length) this.IRB.emit(keyPtr.local);*/
+      
       return keyPtr.name;
     });
     
-    // =========================================
     // LOOP LABELS
-    // =========================================
+    
     const startLabel = this.IRB.newLabel("map_loop_start");
     const bodyLabel = this.IRB.newLabel("map_loop_body");
     const endLabel = this.IRB.newLabel("map_loop_end");
@@ -530,24 +505,21 @@ if (hasNestedMap) {
     
     this.IRB.loopStack.push({ breakLabel: endLabel, continueLabel: startLabel });
     
-    // =========================================
     // INDEX ALLOCA
-    // =========================================
+    
     const idxPtr = this.IRB.newTemp();
     this.IRB.emit(`${idxPtr} = alloca i32`);
-    this.IRB.emitStore("i32", "0", idxPtr);
+    this.IRB.emit(`store i32 0, ptr ${idxPtr}`);
     
-    // =========================================
     // KEY POINTER ALLOCA  (written by the switch, read in body)
-    // =========================================
+    
     const keySlot = this.IRB.newTemp();
     this.IRB.emit(`${keySlot} = alloca ptr`);
     
     this.IRB.emit(`br label %${startLabel}`);
     
-    // =========================================
     // CONDITION BLOCK
-    // =========================================
+    
     this.IRB.emit(`${startLabel}:`);
     
     const idxVal = this.IRB.newTemp();
@@ -557,9 +529,8 @@ if (hasNestedMap) {
     this.IRB.emit(`${cmpTmp} = icmp slt i32 ${idxVal}, ${keys.length}`);
     this.IRB.emit(`br i1 ${cmpTmp}, label %${switchLabel}, label %${endLabel}`);
     
-    // =========================================
     // SWITCH BLOCK — selects the right key ptr
-    // =========================================
+    
     this.IRB.emit(`${switchLabel}:`);
     
     // Build one case-label per key
@@ -583,9 +554,8 @@ if (hasNestedMap) {
       this.IRB.emit(`br label %${bodyLabel}`);
     });
     
-    // =========================================
     // BODY BLOCK
-    // =========================================
+    
     this.IRB.emit(`${bodyLabel}:`);
     
     // Load the selected key ptr and expose it as the loop variable
@@ -609,22 +579,21 @@ if (hasNestedMap) {
     });
     
     
-    
-    // Execute user body
+    // Execute body
     this.block.block(body, false);
     
-    // =========================================
     // INCREMENT
-    // =========================================
+    
     const incTmp = this.IRB.newTemp();
     this.IRB.emit(`${incTmp} = add i32 ${idxVal}, 1`);
     this.IRB.emitStore("i32", incTmp, idxPtr);
     
+    this.IRB.emit(`store i32 ${incTmp}, ptr ${idxPtr}`);
+    
     this.IRB.emit(`br label %${startLabel}`);
     
-    // =========================================
     // END
-    // =========================================
+    
     this.IRB.emit(`${endLabel}:`);
     
     this.IRB.loopStack.pop();

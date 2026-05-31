@@ -12,18 +12,29 @@ export class HandleFunction {
       this.IRB.emitError("SemanticError", "return outside function", node);
     }
     
+    if (node?.value.length === 0) {
+      this.IRB.emit(`ret void`);
+      return;
+    }
+    
+    const name = this.IRB.currentFunction.name;
+    
     // ensure meta data passed from handleFunction is valid and its return type need inference 
     if (meta && meta.isAuto) {
       
       const retType = this.infer.infer(node.value);
       
       if (retType === "List") {
-        this.IRB.emitError("SemanticError", `function '${this.IRB.currentFunction.name}' not allowed return inference`, node);
+        this.IRB.emitError("SemanticError", `function '${name}' not allowed return inference`, node);
       }
-      const fn = this.IRB.getFunction(this.IRB.currentFunction.name);
+      
+      const fn = this.IRB.getFunction(name);
+      
+      // update return type
+      
       fn.returnType = retType;
       
-      this.IRB.currentFunction.returnType = retType; // update return type
+      this.IRB.currentFunction.returnType = retType; 
       
       if (node.value.type === "CALL") {
         const fn = this.IRB.getFunction(node.value.name);
@@ -47,47 +58,40 @@ export class HandleFunction {
     }
     
     const expr = this.expr.handleExpression(node.value, false);
-    if (expr.local?.length) {
-      this.IRB.emit(expr.local.join("\n"));
-    }
     
-    if (expr.global?.length) {
-      this.IRB.globals.push(expr);
-    }
-    if (expr.llvmType?.startsWith("[")) {
+    this.IRB.emitExpr(expr);
+    
+    if (expr.llvmType.startsWith("[")) {
       this.IRB.emitError(
         "SemanticError",
-        `function ${this.IRB.currentFunction.name} cannot return array`, node)
+        `function ${name} cannot return array`, node)
     }
     
-    if (expr.isList) {
+    if (expr?.isList) {
       if (!this.IRB.currentFunction.isList) {
-        this.IRB.emitError("TypeError", `function ${this.IRB.currentFunction.name} expected ${funcType} but got ${expr.type}`, node);
+        this.IRB.emitError("TypeError", `function ${name} expected ${funcType} but got ${expr.type}`, node);
       }
-      
-      if (expr.isList) {
         
-        if (expr.fromParam) {
+        if (expr?.fromParam || expr?.isListLiteral) {
           // param already holds list pointer
           this.IRB.emit(`ret ptr ${expr.ptr}`);
-        } else if (expr?.isListLiteral) {
-          this.IRB.emit(`ret ptr ${expr.ptr}`);
-        }
+        } 
         else {
-          // local variable (stack slot) → needs load
+          // local variable (stack slot) needs load
           const t = this.IRB.newTemp();
           this.IRB.emit(`${t} = load ptr, ptr ${expr.ptr}`);
           this.IRB.emit(`ret ptr ${t}`);
         }
         
         return;
-      }
     }
+    
     if (expr.isMap) {
       if (node.value.type !== "variable") {
         this.IRB.emitError("SemanticError", "only Map reference can return", node);
       }
       let loaded;
+      
       if (expr.needsLoad) {
         loaded = this.IRB.newTemp();
         
@@ -102,12 +106,12 @@ export class HandleFunction {
       
       const layout = expr.layout;
       
-      this.IRB.functions.get(this.IRB.currentFunction.name).layout = layout;
+      this.IRB.functions.get(name).layout = layout;
       return;
     }
-    // type check (minimal)
+    // type check 
     if (expr.type !== funcType) {
-      this.IRB.emitError("TypeError", `function ${this.IRB.currentFunction.name} expected ${funcType} but got ${expr.type}`, node);
+      this.IRB.emitError("TypeError", `function ${name} expected ${funcType} but got ${expr.type}`, node);
     }
     
     this.IRB.emit(`ret ${expr.llvmType} ${expr.ptr}`);
@@ -129,6 +133,7 @@ export class HandleFunction {
     const isMethod = node?.isMethod;
     
     const prevFunction = this.IRB.currentFunction;
+    
     let local = []
     
     let name;
@@ -210,18 +215,7 @@ export class HandleFunction {
           needsLoad: false
         }));
       } else if (p.isRest) {
-        /*
-        // update symbol table
-        this.IRB.setVar(p.name, this.IRB.createData({
-          ptr: "%varargs",
-          llvmType: p.llvmType,
-          type: p.type,
-          isConstant: false,
-          isGlobal: false,
-          isVarArg: true,
-          needsLoad: false
-        }));
-        */
+
         this.IRB.declareOneTime(
         "ZenList",
         "%ZenList = type { ptr, i32, i32, i64 }"
@@ -239,16 +233,6 @@ export class HandleFunction {
           fromParam: true
         }));
         
-      } else if (p.isMethod) {
-        /*  this.IRB.setVar(p.name, this.IRB.createData({
-            ptr: "%this",
-            llvmType: p.llvmType,
-            type: p.type,
-            isConstant: false,
-            isGlobal: false,
-            isList: false,
-            isMethod: true
-          }));*/
       } else if (p.isMap) {
         this.IRB.setVar(p.name, this.IRB.createData({
           ptr: p.ptr,

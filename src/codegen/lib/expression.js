@@ -1,4 +1,4 @@
-import { LOGICAL_OPS, COMPARISON_OPS, OP_CODES, LOOKUP, cmpMap, fcmpMap, NAMESPACE_MAP } from '/src/config/config.js';
+import { LOGICAL_OPS, COMPARISON_OPS, OP_CODES, LOOKUP, cmpMap, fcmpMap, NAMESPACE_MAP, SCALAR_TYPES } from '/src/config/config.js';
 
 export class Expression {
   constructor(IRB) {
@@ -23,7 +23,8 @@ export class Expression {
     
     // scalar types
     
-    if (node.type === "int" || node.type === "double" || node.type === "bool") {
+    if (SCALAR_TYPES.includes(node.type)) {
+      
       let value = node.value;
       
       if (node.type === "double") {
@@ -82,24 +83,20 @@ export class Expression {
       
       const data = this.IRB.getVar(node.name, node);
       
-      
       // check its array so no need load. we can load in array access 
       const isArray = data?.isArray;
       const isStruct = data?.isStruct;
       const isList = data?.isList;
       const isVarArg = data?.isVarArg;
       const isMap = data?.isMap;
-      let needsLoad = data?.needsLoad ?? false;
+      let needsLoad = data?.needsLoad ?? false; // default false
       const fromLoopOf = data?.fromLoopOf;
       
       let t;
       if (!isArray && !isStruct && (!isList) && !isVarArg && !isMap && needsLoad) {
         t = this.IRB.newTemp();
-        this.IRB.emit(`${t} = load ${data.llvmType}, ${data.llvmType}* ${data.ptr}`);
-        needsLoad = false;
-      } else if (isVarArg) {
-        t = this.IRB.newTemp();
-        this.IRB.emit(`${t} = load ptr, ptr ${data.ptr}`);
+        this.IRB.emit(`${t} = load ${data.llvmType}, ptr ${data.ptr}`);
+        needsLoad = false; // update 
       }
       else {
         t = data.ptr;
@@ -114,9 +111,9 @@ export class Expression {
         isStruct: data?.isStruct,
         local: [],
         global: [],
-        length: data.length, //data.llvmType?.startsWith("[") ? data.length : null, //only for length() calcultion for arrays
+        length: data?.length,
         endLabel: null,
-        isVarRef: true, // for ++ -- ref and string variable refference tracking only
+        isVarRef: true,
         postOrPrefix: data.postOrPrefix,
         dimData: isArray ? data.dimensionsData : null, // only for array access bound checking
         isList,
@@ -131,13 +128,6 @@ export class Expression {
         fromLoopOf
       };
     }
-    
-    /*if (node.type === "ARRAY") {
-      this.IRB.emitError("SyntaxError", "array standalone literals not yet supported yet");
-     
-     
-    }
-    */
     
     if (node.type === "ARRAY") {
       
@@ -169,6 +159,8 @@ export class Expression {
       const elemExpr =
         this.handleExpression(first);
       
+      this.IRB.emitExpr(elemExpr);
+      
       const elemLLVM =
         elemExpr.isList ?
         "ptr" :
@@ -194,13 +186,7 @@ export class Expression {
         const expr =
           this.handleExpression(el);
         
-        if (expr.local?.length) {
-          local.push(...expr.local);
-        }
-        
-        if (expr.global?.length) {
-          global.push(...expr.global);
-        }
+        this.IRB.emitExpr(expr);
         
         const tmp =
           this.IRB.newTemp();
@@ -297,13 +283,6 @@ export class Expression {
         
       }
       
-      
-      
-      
-      
-      
-      
-      
       if (object.isStruct) {
         
         let structName = object.type;
@@ -311,9 +290,7 @@ export class Expression {
         
         let fieldInfo = null;
         
-        // =====================================
         // WALK CHAIN
-        // =====================================
         
         for (let i = 0; i < fields.length; i++) {
           
@@ -348,15 +325,14 @@ export class Expression {
             this.IRB.getStruct(structName);
           
           if (!structInfo) {
-            throw new Error(
-              `[Zen Error] Unknown struct '${structName}'`
+            this.IRB.emitError(
+              "InternalError",
+              `Unknown struct '${structName}'`,
+              node
             );
           }
           
           const currentField = fields[i];
-          
-          
-          
           
           const possibleMethod =
             `${structName}_${currentField}`;
@@ -380,9 +356,7 @@ export class Expression {
               const arg =
                 this.handleExpression(argNode);
               
-              if (arg.local?.length) {
-                local.push(...arg.local);
-              }
+              this.IRB.emitExpr(arg);
               
               args.push(
                 `${arg.llvmType} ${arg.ptr}`
@@ -429,19 +403,16 @@ export class Expression {
             };
           }
           
-          
-          
-          
-          // =====================================
           // FIELD LOOKUP
-          // =====================================
           
           const fieldIndex =
             structInfo.fieldMap[currentField];
           
           if (fieldIndex === undefined) {
-            throw new Error(
-              `[Zen Error] Struct field '${currentField}' does not exist in '${structName}'`
+            this.IRB.emitError(
+              "TypeError",
+              `Unknown field '${currentField}' in struct '${structName}'`,
+              node
             );
           }
           
@@ -460,9 +431,7 @@ export class Expression {
           structName = fieldInfo.type;
         }
         
-        // =====================================
         // STRUCT FIELD TYPES
-        // =====================================
         
         const finalType =
           fieldInfo.llvmType;
@@ -473,11 +442,7 @@ export class Expression {
         const isMap =
           fieldInfo.type === "Map";
         
-        // =====================================
         // LIST RETURN
-        // =====================================
-        
-        
         
         if (isList) {
           
@@ -492,92 +457,36 @@ export class Expression {
             generic: fieldInfo.generic
           };
         }
-        /*
-          // =====================================
-          // MAP RETURN
-          // =====================================
-
-          if (isMap) {
-
-            return {
-              ptr: basePtr,
-              type: "Map",
-              llvmType: "ptr",
-              local: [],
-              global: [],
-              isMap: true,
-              isVarRef: true,
-              layout: fieldInfo.layout
-            };
-            
-          }
-
-          // =====================================
-          // NORMAL SCALAR LOAD
-          // =====================================
-
-          const val =
-            this.IRB.newTemp();
-
-          this.IRB.emit(
-            `${val} = load ${finalType}, ${finalType}* ${basePtr}`
-          );
-
-          return {
-            ptr: val,
-            type: structName,
-            llvmType: finalType,
-            local: [],
-            global: [],
-            isVarRef: false
-          };
-          */
+        
       }
       
-      
-      
-      
-      
-      
-      
-      
-      
-      
+      // map member access
       if (object?.isMap) {
         
-        // =========================================
         // DECLARE RUNTIME
-        // =========================================
         
         this.IRB.declareOneTime(
           "zen_map_get",
           "declare ptr @zen_map_get(ptr, ptr)"
         );
         
-        // =========================================
         // MAP LAYOUT
-        // =========================================
         
         let currentLayout =
           this.IRB.maps.get(
             base.name
           );
         
-        
         if (!currentLayout) {
           
-          throw new Error(
-            `[Zen Error] Unknown map layout: ${base.name}`
+          this.IRB.emitError(
+            "InternalError",
+            `Unknown map layout: ${base.name}`,
+            node
           );
         }
         
-        
-        // =========================================
         // START CHAIN WALK
-        // =========================================
-        
-        /* let currentMapPtr =
-           object.ptr;*/
         
         let currentMapPtr = object.ptr;
         
@@ -597,19 +506,16 @@ export class Expression {
         let finalType = "ptr";
         let finalLLVMType = "ptr";
         let finalMapLayout = null;
-        // =========================================
+        
         // WALK:
         // a.b.c.d
-        // =========================================
         
         for (let i = 0; i < fields.length; i++) {
           
           const field =
             fields[i];
           
-          // =========================================
           // VALIDATE FIELD
-          // =========================================
           
           const freedSet = this.IRB.freedFields.get(object.name);
           
@@ -619,7 +525,6 @@ export class Expression {
               `map ${object.name} field '${field}' used after free`, node
             );
           }
-          
           
           switch (field) {
             case 'free':
@@ -632,23 +537,26 @@ export class Expression {
               return { local: [], global: [] }
               
             default:
-              // Tab to edit
+              this.IRB.emitError(
+                "ReferenceError",
+                `Unknown map method '${field}'`,
+                node
+              );
           }
           
           if (!currentLayout[field] && field !== "free") {
             
-            throw new Error(
-              `[Zen Error] Map field '${field}' does not exist`
+            this.IRB.emitError(
+              "ReferenceError",
+              `Map field '${field}' does not exist`,
+              node
             );
           }
           
           const meta =
             currentLayout[field];
           
-          
-          // =========================================
           // SWITCH TO LIST MEMBER ACCESS
-          // =========================================
           
           if (
             meta.isList &&
@@ -664,17 +572,9 @@ export class Expression {
             const keyPtr =
               this.IRB.newGlobalString(field);
             
-            /*  if (keyPtr.local.length) {
-                this.IRB.emit(keyPtr.local);
-              } */
-            
             const listPtr =
               this.IRB.newTemp();
-            /*      let t;
-                   
-                     t = this.IRB.newTemp()
-                     this.IRB.emit(`${t} = load ptr, ptr ${currentMapPtr}`)
-                   */
+            
             this.IRB.emit(
               `${listPtr} = call ptr @zen_map_get(` +
               `ptr ${currentMapPtr}, ` +
@@ -705,13 +605,9 @@ export class Expression {
               global: []
             };
             
-            // =====================================
             // DIRECT LIST PROPERTY HANDLING
-            // =====================================
             
-            // =====================================
             // DIRECT LIST PROPERTY HANDLING
-            // =====================================
             
             const listGeneric = meta.elementType;
             
@@ -721,10 +617,7 @@ export class Expression {
             
           }
           
-          
-          // =========================================
           // SAVE FINAL TYPE
-          // =========================================
           
           finalType =
             meta.type === "List" ? meta?.elementType.type : meta.type;
@@ -735,30 +628,18 @@ export class Expression {
           
           isList = meta.isList;
           
-          // =========================================
           // KEY STRING
-          // =========================================
           
           const keyPtr =
             this.IRB.newGlobalString(
               field
             );
           
-          /*  if (keyPtr.local.length) {
-              
-              this.IRB.emit(
-                keyPtr.local
-              );
-            }*/
-          
-          // =========================================
           // MAP GET
-          // =========================================
           
           resultPtr =
             this.IRB.newTemp();
-          /* const t = this.IRB.newTemp()
-            this.IRB.emit(`${t} = load ptr, ptr ${currentMapPtr}`)*/
+          
           this.IRB.emit(
             `${resultPtr} = call ptr @zen_map_get(` +
             `ptr ${currentMapPtr}, ` +
@@ -766,9 +647,7 @@ export class Expression {
             `)`
           );
           
-          // =========================================
           // NEXT MAP
-          // =========================================
           
           if (meta.isMap) {
             
@@ -784,9 +663,7 @@ export class Expression {
           }
         }
         
-        // =========================================
         // PTR -> REAL TYPE
-        // =========================================
         
         let finalPtr =
           resultPtr;
@@ -824,9 +701,7 @@ export class Expression {
           }
         }
         
-        // =========================================
         // RETURN FINAL VALUE
-        // =========================================
         
         return {
           ptr: finalPtr,
@@ -857,9 +732,7 @@ export class Expression {
         const o =
           this.handleExpression(node.object);
         
-        if (o?.local?.length) {
-          this.IRB.emit(o.local.join("\n"));
-        }
+        this.IRB.emitExpr(o);
         
         let listPtr =
           this.IRB.newTemp();
@@ -873,12 +746,7 @@ export class Expression {
         }
         
         const field = node.field;
-        /* const isNestedList = this.IRB.isNestedList(object.generic);
-         
-         if (field === "free" && isNestedList) {
-           this.IRB.emitError("MemoryError", `Cannot free nested list '${base?.array?.name}'. Only top-level lists can be freed.`);
-         }
-         */
+        
         o.name = base?.array?.o?.name;
         
         return this.IRB.handleListProperty(listPtr, o, field, node, false, base?.array?.field);
@@ -892,81 +760,7 @@ export class Expression {
         
         const structInfo = this.IRB.getStruct(structName);
         
-        
-        
         const currentField = fields[i];
-        
-        /*   const possibleMethod =
-             `${structName}_${currentField}`;
-           
-           const isMethod =
-             this.IRB.functions.has(possibleMethod);
-           
-           if (isMethod) {
-             
-             const fn =
-               this.IRB.getFunction(possibleMethod);
-             
-             const args = [];
-             
-             // implicit this
-             args.push(`ptr ${basePtr}`);
-             
-             // method args
-             for (const argNode of (node.args || [])) {
-               
-               const arg =
-                 this.handleExpression(argNode);
-               
-               if (arg.local?.length) {
-                 local.push(...arg.local);
-               }
-               
-               args.push(
-                 `${arg.llvmType} ${arg.ptr}`
-               );
-             }
-             
-             // void method
-             if (fn.returnType.type === "void") {
-               
-               this.IRB.emit(
-                 `call void @${possibleMethod}(${args.join(", ")})`
-               );
-               
-               return {
-                 ptr: null,
-                 type: "void",
-                 llvmType: "void",
-                 local,
-                 global: [],
-                 isVarRef: false
-               };
-             }
-             
-             // returning method
-             const retType =
-               this.IRB.getLLVMType(
-                 fn.returnType.type
-               );
-             
-             const tmp =
-               this.IRB.newTemp();
-             
-             this.IRB.emit(
-               `${tmp} = call ${retType} @${possibleMethod}(${args.join(", ")})`
-             );
-             
-             return {
-               ptr: tmp,
-               type: fn.returnType.type,
-               llvmType: retType,
-               local,
-               global: [],
-               isVarRef: false
-             };
-           }
-           */
         
         const fieldIndex = structInfo.fieldMap[fields[i]];
         
@@ -992,7 +786,7 @@ export class Expression {
         //  return pointer (so ARRAY_ACCESS can use it)
         return {
           ptr: basePtr,
-          addr: basePtr, // IMPORTANT for your existing ARRAY_ACCESS
+          addr: basePtr,
           type: structName,
           llvmType: finalType,
           local,
@@ -1034,7 +828,7 @@ export class Expression {
         
         const index = this.handleExpression(n.index);
         
-        if (index.local.length) local.push(index.local.join("\n"))
+        this.IRB.emitExpr(index);
         
         const ptr = this.IRB.newTemp();
         
@@ -1054,13 +848,6 @@ export class Expression {
             isVarArg: true
           }
         }
-        
-        
-        
-        
-        
-        
-        
         
         if (base.isList) {
           
@@ -1117,13 +904,10 @@ export class Expression {
             needsLoad: !isNested
           };
           
-          
-          
         }
         
-        // =========================================
         // MAP ACCESS — a[key]
-        // =========================================
+        
         if (base.isMap) {
           const mapLayout = base.layout;
           const typeSet = new Set();
@@ -1166,9 +950,6 @@ export class Expression {
             `${resultPtr} = call ptr @zen_map_get(ptr ${mapPtr}, ptr ${index.ptr})`
           );
           
-          // Determine the value type from the map layout if available
-          
-          
           let meta;
           
           if (index.rawStr && mapLayout[index.rawStr]) {
@@ -1177,27 +958,19 @@ export class Expression {
             meta = Object.values(mapLayout)[0]; // safe fallback
           }
           
-          // =========================================
-          // TYPE RESOLUTION (CORRECT FOR YOUR DESIGN)
-          // =========================================
+          // TYPE RESOLUTION
           
-          // primitive type only (NEVER includes list info)
+          // primitive type only
           let finalType = meta?.type || genericType;
           
-          // list flag MUST come from meta directly
           const isList = meta?.isList || false;
           
-          // element type (for nested reasoning / loops)
           const elementType = meta?.elementType || null;
           
-          // LLVM type stays same logic
           const finalLLVMType =
             meta?.llvmType ?? this.IRB.getLLVMType(finalType);
           
           let finalPtr = resultPtr;
-          
-          
-          //  let finalPtr = resultPtr; // ALWAYS keep ptr for containers
           
           return {
             ptr: finalPtr,
@@ -1213,7 +986,6 @@ export class Expression {
             needsLoad: false
           };
         }
-        
         
         // string index access
         if (base.type === "string" && base.llvmType === "i8*") {
@@ -1312,9 +1084,8 @@ export class Expression {
         this.IRB.emitError("TypeError", "unary operators cannot be applied to type 'string'", node);
       }
       
-      /* =========================
-         LOGICAL NOT (!)
-      ========================= */
+      //  LOGICAL NOT (!)
+      
       if (node.operator === "!") {
         let isValue;
         let boolVal;
@@ -1354,9 +1125,9 @@ export class Expression {
         };
       }
       
-      /* =========================
-         NEGATION (-)
-      ========================= */
+      
+      //   NEGATION (-)
+      
       if (node.operator === "-") {
         
         const res = this.IRB.newTemp();
@@ -1412,10 +1183,8 @@ export class Expression {
         this.IRB.emitError("TypeError", `Cannot apply - to ${val.type}`, node);
       }
       
-      /* ===============================
-         Increment or Decrement postfix 
-         or prefix unary
-         ===============================*/
+      //  Increment or Decrement postfix 
+      //  or prefix unary
       
       if (node.operator === "++" || node.operator === "--") {
         
@@ -1468,59 +1237,30 @@ export class Expression {
       this.IRB.emitError("TypeError", `Unsupported unary operator ${node.operator}`, node);
     }
     
-    /* =========================
-       RECURSIVE RESOLVE
-    ========================= */
+    //   RECURSIVE RESOLVE
+    
     const resolve = (n) => {
       
-      if (n.type === "BINARY_EXPRESSION") {
-        
-        this.IRB.containsUnary(n)
-        return this.handleExpression(n, globalScope);
-      }
-      
-      if (n.type === "string") {
-        return this.handleExpression(n, globalScope);
-      }
-      
-      if (n.type === "ARRAY_ACCESS") {
-        return this.handleExpression(n, globalScope);
-      }
-      
-      if (n.type === "ARRAY") {
-        return this.handleExpression(n, globalScope);
-      }
-      
-      if (n.type === "MEMBER_ACCESS") {
-        return this.handleExpression(n, globalScope);
+      if (
+        n.type === "BINARY_EXPRESSION" ||
+        n.type === "UNARY_EXPRESSION"
+      ) {
+        this.IRB.containsUnary(n);
       }
       
       if (n.type === "CALL") {
-        return this.call.handleCall(n, false, globalScope); // false : mark as not a statement not to push emit
+        return this.call.handleCall(
+          n,
+          false,
+          globalScope
+        );
       }
       
-      /* ===== VARIABLE ===== */
-      if (n.type === "variable") {
-        return this.handleExpression(n, globalScope)
-      }
-      
-      if (n.type === "TERNARY") {
-        return this.handleExpression(n)
-      }
-      
-      if (n.type === "MAP_LITERAL") {
-        return this.handleExpression(n)
-      }
-      
-      if (n.type === "UNARY_EXPRESSION") {
-        this.IRB.containsUnary(n);
-        return this.handleExpression(n);
-      }
-      
-      if (n.type === "int" || n.type === "bool" || n.type === "double") {
-        return this.handleExpression(n, globalScope)
-      }
-    };
+      return this.handleExpression(
+        n,
+        globalScope
+      );
+    }
     
     let lPtr = null;
     let rPtr = null;
@@ -1549,149 +1289,50 @@ export class Expression {
       
     }
     
-  /* =========================
-       1. STRING CASE 
-    ========================= 
-    if (lType === "string" && rType === "string") {
+    if (lType === "string" || rType === "string") {
       
-      
-      if (["-", "/", "*", "%"].includes(op)) {
-        this.IRB.emitError(
-          "TypeError",
-          `invalid string operator '${op}', expected '+'`, node
-        )
+      const LNode = {
+        ptr: lPtr,
+        type: lType,
+        llvmType: lLLVMtype
       }
       
-      if (op === "+") {
-        this.IRB.declareOneTime("str_concat", "declare i8* @str_concat(i8*, i8*)");
-        
-        const resultPtr = this.IRB.newTemp();
-        
-        /* ---------- CONCAT --------
-        local.push(
-          `${resultPtr} = call i8* @str_concat(i8* ${lPtr}, i8* ${rPtr})`
-        );
-        
-        return {
-          ptr: resultPtr,
-          type: "string",
-          llvmType: "i8*",
-          local: local,
-          global: global,
-          endLabel: null,
-          postOrPrefix: false
-        };
+      const RNode = {
+        ptr: rPtr,
+        type: rType,
+        llvmType: rLLVMtype
       }
       
+      let leftPtr = lPtr;
+      let rightPtr = rPtr;
       
-      if (COMPARISON_OPS.includes(op)) {
-        
-        this.IRB.declareOneTime(
-          "str_cmp",
-          "declare i32 @strcmp(i8*, i8*)"
-        );
-        
-        const resultPtr = this.IRB.newTemp();
-        
-        const l = lPtr;
-        const r = rPtr;
-        
-        const cmp = this.IRB.newTemp();
-        local.push(
-          `${cmp} = call i32 @strcmp(i8* ${l}, i8* ${r})`
-        );
-        
-        // convert strcmp result → boolean
-        const boolPtr = this.IRB.newTemp();
-        
-        if (op === "==") {
-          local.push(`${boolPtr} = icmp eq i32 ${cmp}, 0`);
-        }
-        else if (op === "!=") {
-          local.push(`${boolPtr} = icmp ne i32 ${cmp}, 0`);
-        }
-        else if (op === ">") {
-          local.push(`${boolPtr} = icmp sgt i32 ${cmp}, 0`);
-        }
-        else if (op === "<") {
-          local.push(`${boolPtr} = icmp slt i32 ${cmp}, 0`);
-        }
-        else if (op === ">=") {
-          local.push(`${boolPtr} = icmp sge i32 ${cmp}, 0`);
-        }
-        else if (op === "<=") {
-          local.push(`${boolPtr} = icmp sle i32 ${cmp}, 0`);
-        }
-        
-        return {
-          ptr: boolPtr,
-          type: "bool",
-          llvmType: "i1",
-          local,
-          global,
-          postOrPrefix: false,
-          endLabel: null
-        };
-      }
-      
-    } else if (
-      (lType === "string" &&
-        rType !== "string") ||
-      (rType === "string" && lType !== "string")
-    ) {
-      this.IRB.emitError(
-        "TypeError",
-        `cannot apply '${op}' to ${lType} and ${rType}`, node
-      );
-    }
-    */
-    
-    
-    
-     if (lType === "string" || rType === "string") {
-       
-       const LNode = {
-         ptr: lPtr,
-         type: lType,
-         llvmType: lLLVMtype
-       }
-       
-       const RNode = {
-         ptr: rPtr,
-         type: rType,
-         llvmType: rLLVMtype
-       }
-       
-       let leftPtr = lPtr;
-       let rightPtr = rPtr;
-       
-       if (lType !== "string") {
-         switch (lType) {
-           case 'int':
-           case 'bool':
-           case 'double':
+      if (lType !== "string") {
+        switch (lType) {
+          case 'int':
+          case 'bool':
+          case 'double':
             const cExpr = this.IRB.castExpression(LNode, "string");
             leftPtr = cExpr.ptr;
-             break;
-           
-           default:
+            break;
+            
+          default:
             this.IRB.emitError("TypeError", `Cannot cast ${lType} to string`, node);
-         }
-       }
-       
-       if (rType !== "string") {
-         switch (rType) {
-           case 'int':
-           case 'bool':
-           case 'double':
+        }
+      }
+      
+      if (rType !== "string") {
+        switch (rType) {
+          case 'int':
+          case 'bool':
+          case 'double':
             const cExpr = this.IRB.castExpression(RNode, "string");
             rightPtr = cExpr.ptr;
-             break;
-           
-           default:
+            break;
+            
+          default:
             this.IRB.emitError("TypeError", `Cannot cast ${rType} to string`, node);
-         }
-       }
+        }
+      }
       
       
       if (["-", "/", "*", "%"].includes(op)) {
@@ -1785,10 +1426,8 @@ export class Expression {
     }
     
     
+    //  2. NORMALIZE (bool → int)
     
-    /* =========================
-       2. NORMALIZE (bool → int)
-    ========================= */
     const normalize = (type, val) => {
       
       if (type === "bool") {
@@ -1869,7 +1508,7 @@ export class Expression {
       
       const rBool = toBool(RNode.ptr, RNode.type);
       
-      // IMPORTANT: RHS may end in another block (nested short circuit)
+      // RHS may end in another block (nested short circuit)
       const rIncomingBlock = RNode.endLabel || rhsLabel;
       
       local.push(`br label %${endLabel}`);
@@ -1942,9 +1581,8 @@ export class Expression {
       };
     }
     
-    /* =========================
-       3. TYPE PROMOTION
-    ========================= */
+    //   3. TYPE PROMOTION
+    
     let resultType =
       LOOKUP[L.type] > LOOKUP[R.type] ?
       L.type :

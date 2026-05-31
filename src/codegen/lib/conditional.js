@@ -28,10 +28,7 @@ export class Conditional {
       // ===== condition =====
       const expr = this.expr.handleExpression(condition, false);
       
-      if (expr.local?.length) this.IRB.emit(expr.local.join("\n"));
-      if (expr.global?.length) {
-        this.IRB.globals.push(expr.global.join("\n"));
-      }
+      this.IRB.emitExpr(expr);
       
       const cond =
         expr.llvmType === "i1" ?

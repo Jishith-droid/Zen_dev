@@ -4,27 +4,66 @@ const LLVM_TYPES_MAP = {
   int: "i32",
   double: "double",
   string: "i8*",
-  bool: "i1",
-  "void": "void"
+  bool: "i1"
 };
 
 const ZEN_TYPES_MAP = {
   "i32": "int",
   "double": "double",
   "i8*": "string",
-  "i1": "bool",
-  "void": "void"
+  "i1": "bool"
 }
 
 const COMPOUND_OPERATORS = ["+=", "-=", "*=", "/=", "%="];
 
-const TYPES = ["int", "bool", "string", "double", "auto" /* for infer */ ];
+// operators
+
+const ASSIGNMENT_OPS = [
+  "=",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%="
+];
+
+const ARITHMETIC_OPS = [
+  "+",
+  "-",
+  "*",
+  "/",
+  "%"
+];
+
+const UNARY_OPS = [
+  "++",
+  "--",
+  "!"
+];
+
+const COMPARISON_OPS = [
+  "==",
+  "!=",
+  ">=",
+  "<=",
+  ">",
+  "<"
+];
+
+const LOGICAL_OPS = [
+  "&&",
+  "||"
+];
+
+const TYPES = ["int", "bool", "string", "double"];
 
 const SCALAR_TYPES = ["int", "bool", "double"];
 
 const NON_SCALAR_TYPES = ["string"];
 
-const RESERVED_KEYWORDS = ["fn", "if", "else if", "else", "loop", "const", "int", "double", "string", "bool", "return", "while", "List", "this", "do", "in", "of", "async", "await", "Map"];
+// keywords
+
+const KEYWORDS = ["if", "else if", "else", "loop", "break", "continue", "return", "fn", "const", "void", "while", "switch", "case", "default", "import", "export", "from", "struct", "auto", "List", "this", "do", "in", "of", "async", "await", "Map", "auto"];
 
 // lexer tokens
 
@@ -39,7 +78,6 @@ const TokenTypes = {
   FROM: "FROM",
   QUESTION: "QUESTION",
   TYPE: "TYPE",
-  INT: "int",
   ELLIPSIS: "ELLIPSIS",
   LESS_THAN: "LESS_THAN",
   GREATER_THAN: "GREATER_THAN",
@@ -49,6 +87,7 @@ const TokenTypes = {
   STRING: "string",
   BOOLEAN: "bool",
   DOUBLE: "double",
+  INT: "int",
   NEWLINE: "NEWLINE",
   LEFT_PARENTHESIS: "LEFT_PARENTHESIS",
   RIGHT_PARENTHESIS: "RIGHT_PARENTHESIS",
@@ -61,92 +100,7 @@ const TokenTypes = {
   EOF: "EOF"
 };
 
-// keywords
-
-const KEYWORDS = ["if", "else if", "else", "loop", "break", "continue", "return", "fn", "const", "void", "while", "switch", "case", "default", "import", "export", "from", "struct", "auto", "List", "this", "do", "in", "of", "async", "await", "Map"];
-
-const STDLIB = [
-  // BASIC
-  "isEven", "isOdd", "isPositive", "isNegative",
-  "abs", "max", "min", "clamp", "sign",
-  
-  // MATH
-  "pow", "sqrt", "square", "cube",
-  
-  // ROUNDING
-  "floor", "ceil", "round", "toFixed",
-  "mod",
-  
-  // NUMBER THEORY
-  "gcd", "lcm", "factorial", "isPrime",
-  
-  // INTERPOLATION
-  "lerp", "normalize",
-  
-  // UTILITY
-  "between",
-  
-  // STRING
-  "reverse", "indexOf", "slice", "charAt",
-  "replace", "contains",
-  "upperCase", "lowerCase",
-  "startsWith", "endsWith",
-  "trim", "splitAt",
-  "repeat", "padStart", "padEnd", "padCenter", "count",
-  "capitalize", "extName", "sin",
-  "cos", "tan", "log", "exp",
-  "random", "randomInt",
-  
-  "match", "json"
-];
-
-// builtin functions
-
-/*const BUILTIN_FUNCTIONS = [
-  "screen", "input", "type", "Int", "Double", "Bool", "String", "toString", "toInt", "length", "panic", "readFile", "writeFile", "appendFile", "exists", "deleteFile", "renameFile", "makeDir", "exec", "sleep", "getEnv", "cwd", "changeDir",
-  "cpuCount",
-  
-  "cpuArch",
-  
-  "cpuModel",
-  
-  "cpuSpeed",
-  
-  "totalMemory",
-  
-  "freeMemory",
-  
-  "usedMemory",
-  
-  "processMemory",
-  
-  "osName",
-  
-  "osVersion",
-  
-  "hostname",
-  
-  "username",
-  
-  "uptime",
-  
-  "online",
-  
-  "battery",
-  "time",
-  "millis",
-  "date",
-  "month",
-  "day",
-  "year",
-  "color",
-  "get",
-  "post",
-  "update",
-  "delete",
-  "patch"
-];
-*/
+// global reserved functions
 
 const RESERVED_FUNCTIONS = [
   // CORE
@@ -195,6 +149,8 @@ const RESERVED_FUNCTIONS = [
   "match", "json"
 ]
 
+// all built in functions
+
 const BUILTIN_FUNCTIONS = [
   
   // CORE
@@ -209,7 +165,38 @@ const BUILTIN_FUNCTIONS = [
   "toInt",
   "length",
   "color",
-  "_time_sleep",
+    // BASIC
+  "isEven", "isOdd", "isPositive", "isNegative",
+  "abs", "max", "min", "clamp", "sign",
+  
+  // MATH
+  "pow", "sqrt", "square", "cube",
+  
+  // ROUNDING
+  "floor", "ceil", "round", "toFixed",
+  "mod",
+  
+  // NUMBER THEORY
+  "gcd", "lcm", "factorial", "isPrime",
+  
+  // INTERPOLATION
+  "lerp", "normalize",
+  
+  // UTILITY
+  "between",
+  
+  // STRING
+  "reverse", "indexOf", "slice", "charAt",
+  "replace", "contains",
+  "upperCase", "lowerCase",
+  "startsWith", "endsWith",
+  "trim", "splitAt",
+  "repeat", "padStart", "padEnd", "padCenter", "count",
+  "capitalize", "extName", "sin",
+  "cos", "tan", "log", "exp",
+  "random", "randomInt",
+  
+  "match", "json",
   // SYS
   "_sys_exec",
   "_sys_panic",
@@ -246,6 +233,7 @@ const BUILTIN_FUNCTIONS = [
   "_net_online",
   
   // TIME
+  "_time_sleep",
   "_time_time",
   "_time_millis",
   "_time_date",
@@ -259,7 +247,50 @@ const BUILTIN_FUNCTIONS = [
   "_http_update",
   "_http_patch",
   "_http_delete"
+]
+
+// zen written std functions
+
+const STD_FUNCTIONS = [
+  // BASIC
+  "isEven", "isOdd", "isPositive", "isNegative",
+  "abs", "max", "min", "clamp", "sign",
+  
+  // MATH
+  "pow", "sqrt", "square", "cube",
+  
+  // ROUNDING
+  "floor", "ceil", "round", "toFixed",
+  "mod",
+  
+  // NUMBER THEORY
+  "gcd", "lcm", "factorial", "isPrime",
+  
+  // INTERPOLATION
+  "lerp", "normalize",
+  
+  // UTILITY
+  "between",
+  
+  // STRING
+  "reverse", "indexOf", "slice", "charAt",
+  "replace", "contains",
+  "upperCase", "lowerCase",
+  "startsWith", "endsWith",
+  "trim", "splitAt",
+  "repeat", "padStart", "padEnd", "padCenter", "count",
+  "capitalize", "extName", "sin",
+  "cos", "tan", "log", "exp",
+  "random", "randomInt",
+  
+  "match", "json"
 ];
+
+// input() must be assigned to a variable.
+
+const NON_STANDALONE_BUILTINS = ["input"];
+
+const VOID_BUILTIN_FUNCTIONS = ["screen", "panic", "sleep"];
 
 const NAMESPACE_MAP = {
   
@@ -321,11 +352,13 @@ const NAMESPACE_MAP = {
   ]
 };
 
+// compiler written std functions schema
+// name : {
+//  return type,
+//  llvm func name
+// }
+
 const BUILTIN_MAP = {
-  
-  // ========================================
-  // CORE
-  // ========================================
   
   screen: {
     returnType: "void",
@@ -333,7 +366,7 @@ const BUILTIN_MAP = {
   },
   
   input: {
-    returnType: "int",
+    returnType: "any", // depending on which type variable it assigned 
     llvmName: "input"
   },
   
@@ -602,50 +635,6 @@ const BUILTIN_MAP = {
   }
 };
 
-
-const NOT_STANDALONE_BUILTIN_FUNCTIONS = ["input"];
-
-const VOID_BUILTIN_FUNCTIONS = ["screen", "panic", "sleep"];
-
-// operators
-
-const ASSIGNMENT_OPS = [
-  "=",
-  "+=",
-  "-=",
-  "*=",
-  "/=",
-  "%="
-];
-
-const ARITHMETIC_OPS = [
-  "+",
-  "-",
-  "*",
-  "/",
-  "%"
-];
-
-const UNARY_OPS = [
-  "++",
-  "--",
-  "!"
-];
-
-const COMPARISON_OPS = [
-  "==",
-  "!=",
-  ">=",
-  "<=",
-  ">",
-  "<"
-];
-
-const LOGICAL_OPS = [
-  "&&",
-  "||"
-];
-
 const OP_CODES = {
   int: {
     "+": "add",
@@ -724,6 +713,8 @@ const OPERATORS = [
 
 // parser types
 
+// Keep type names lowercase for consistency with lexer tokens.
+
 const ParserTypes = {
   BINARY_EXPRESSION: "BINARY_EXPRESSION",
   MAP_DECLARATION: "MAP_DECLARATION",
@@ -765,6 +756,8 @@ const ParserTypes = {
   DATA_TYPE: "DATA_TYPE"
 };
 
+// super globals schema
+
 const GLOBAL_EXTERNAL = {
   PI: { type: "double", mutable: false },
   TAU: { type: "double", mutable: false },
@@ -788,7 +781,7 @@ const GLOBAL_EXTERNAL = {
   NAN: { type: "double", mutable: false }
 };
 
-const STD_FUNCTIONS = {
+const STD_FUNCTIONS_SCHEMA = {
   // ===== BASIC =====
   isEven: { ret: "i1", params: ["i32"] },
   isOdd: { ret: "i1", params: ["i32"] },
@@ -866,129 +859,6 @@ const STD_FUNCTIONS = {
 /* zen native simlar Structure functions map
   struct: { name: [llvm binding name, return type, params count, [params]]}
   */
-/*
-const OS_MAP = {
-  cpuCount: ["zen_cpu_count", "int", 0, []],
-  cpuArch: ["zen_cpu_arch", "string", 0, []],
-  cpuModel: ["zen_cpu_model", "string", 0, []],
-  cpuSpeed: ["zen_cpu_speed", "double", 0, []],
-  
-  totalMemory: ["zen_total_memory", "int", 0, []],
-  freeMemory: ["zen_free_memory", "int", 0, []],
-  usedMemory: ["zen_used_memory", "int", 0, []],
-  processMemory: ["zen_process_memory", "int", 0, []],
-  
-  osName: ["zen_os_name", "string", 0, []],
-  osVersion: ["zen_os_version", "string", 0, []],
-  
-  username: ["zen_username", "string", 0, []],
-  uptime: ["zen_uptime", "double", 0, []],
-  hostname: ["zen_hostname", "int", 0, []],
-  exec: ["zen_exec", "int", 1, ["string"]],
-  color: ["zen_color", "void", 1, ["string"]],
-  sleep: ["zen_sleep", "void", 1, ["int"]],
-  getEnv: ["zen_getEnv", "string", 1, ["string"]],
-  online: ["zen_online", "bool", 0, []],
-  battery: ["zen_battery", "string", 0, []]
-}
-
-const FILE_MAP = {
-  cwd: ["zen_cwd", "string", 0, []],
-  readFile: ["zen_readFile", "string", 1, ["string"]],
-  writeFile: ["zen_writeFile", "int", 2, ["string", "string"]],
-  exists: ["zen_exists", "bool", 1, ["string"]],
-  deleteFile: ["zen_deleteFile", "int", 1, ["string"]],
-  makeDir: ["zen_makeDir", "int", 1, ["string"]],
-  appendFile: ["zen_appendFile", "int", 2, ["string", "string"]],
-  changeDir: ["zen_changeDir", "int", 1],
-  renameFile: ["zen_renameFile", "int", 2, ["string", "string"]]
-};
-
-const TIME_MAP = {
-  
-  time: [
-    "zen_time",
-    "string",
-    0,
-    []
-  ],
-  
-  millis: [
-    "zen_millis",
-    "int",
-    0,
-    []
-  ],
-  
-  date: [
-    "zen_date",
-    "int",
-    0,
-    []
-  ],
-  
-  month: [
-    "zen_month",
-    "int",
-    0,
-    []
-  ],
-  
-  day: [
-    "zen_day",
-    "int",
-    0,
-    []
-  ],
-  
-  year: [
-    "zen_year",
-    "int",
-    0,
-    []
-  ]
-  
-};
-
-const NETWORK_MAP = {
-  
-  "get": [
-    "zen_get",
-    "string",
-    1,
-    ["string"]
-  ],
-  
-  post: [
-    "zen_post",
-    "string",
-    2,
-    ["string", "string"]
-  ],
-  
-  update: [
-    "zen_update",
-    "string",
-    2,
-    ["string", "string"]
-  ],
-  
-  patch: [
-    "zen_patch",
-    "string",
-    2,
-    ["string", "string"]
-  ],
-  
-  "delete": [
-    "zen_delete",
-    "string",
-    1,
-    ["string"]
-  ]
-  
-};*/
-
 
 // ========================================
 // OS
@@ -1340,14 +1210,13 @@ export {
   cmpMap,
   fcmpMap,
   VOID_BUILTIN_FUNCTIONS,
-  NOT_STANDALONE_BUILTIN_FUNCTIONS,
+  NON_STANDALONE_BUILTINS,
   ParserTypes,
   FORMAT_MAP,
-  RESERVED_KEYWORDS,
   ZEN_TYPES_MAP,
   GLOBAL_EXTERNAL,
   STD_FUNCTIONS,
-  STDLIB,
+  STD_FUNCTIONS_SCHEMA,
   OS_MAP,
   FILE_MAP,
   TIME_MAP,

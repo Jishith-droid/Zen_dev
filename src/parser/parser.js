@@ -1,14 +1,20 @@
 import { ParserTypes, BUILTIN_FUNCTIONS, TYPES } from '/src/config/config.js';
 
 export class Parser {
-  constructor(tokens) {
+  constructor(tokens, IRB) {
     this.tokens = tokens;
     this.pos = 0;
+    this.IRB = IRB;
   }
   
-  // =========================
   // HELPERS
-  // =========================
+  
+  lineAndColumn() {
+    return {
+      line: this.current()?.line,
+      column: this.current()?.column
+    }
+  }
   
   current() {
     return this.tokens[this.pos];
@@ -34,7 +40,11 @@ export class Parser {
   
   expect(type) {
     if (!this.match(type)) {
-      throw new Error(`[Zen Error] parser: Expected ${type}, got ${this.current()?.type}`);
+      this.IRB.emitError(
+        "SyntaxError",
+        `Expected '${type}', got '${this.current()?.type ?? "EOF"}'`,
+        this.lineAndColumn()
+      );
     }
     return this.advance();
   }
@@ -52,7 +62,11 @@ export class Parser {
   
   expectKeyword(value) {
     if (!this.matchKeyword(value)) {
-      throw new Error(`[Zen Error] parser: Expected keyword ${value}, got ${this.current()?.value}`);
+      this.IRB.emitError(
+        "SyntaxError",
+        `Expected keyword '${value}', got '${this.current()?.value ?? "EOF"}'`,
+        this.lineAndColumn()
+      );
     }
     return this.advance();
   }
@@ -61,9 +75,8 @@ export class Parser {
     return this.tokens[this.pos + 1]?.type === type;
   }
   
-  // =========================
   // ENTRY
-  // =========================
+  
   parse() {
     const body = [];
     
@@ -86,9 +99,9 @@ export class Parser {
     
     return body;
   }
-  // =========================
-  // STATEMENTS (IMPORTANT FIX)
-  // =========================
+  
+  // STATEMENTS
+  
   parseStatement() {
     if (this.match("TYPE") || this.matchKeyword("auto")) {
       return this.node(this.parseVariableDeclaration());
@@ -144,10 +157,11 @@ export class Parser {
     
     if (this.matchKeyword("fn") || this.matchKeyword("async")) {
       let isAsync = false; // default mode 
+      const insideMethod = false;
       if (this.matchKeyword("async")) {
         isAsync = true;
       }
-      return this.node(this.parseFunction(false, isAsync));
+      return this.node(this.parseFunction(insideMethod, isAsync));
     }
     
     if (this.matchKeyword("while")) {
@@ -161,8 +175,8 @@ export class Parser {
     
     if (
       this.matchKeyword("await") &&
-      this.tokens[this.pos + 1].type === "IDENTIFIER" &&
-      this.tokens[this.pos + 2].type === "LEFT_PARENTHESIS")
+      this.tokens[this.pos + 1]?.type === "IDENTIFIER" &&
+      this.tokens[this.pos + 2]?.type === "LEFT_PARENTHESIS")
     {
       
       this.advance();
@@ -235,33 +249,13 @@ export class Parser {
     });
   }
   
-  /*parseMap() {
-    
-    this.expectKeyword("Map");
-    
-    const name =
-      this.expect("IDENTIFIER").value;
-    
-    this.expect("ASSIGNMENT");
-    
-    const value =
-      this.parseExpression();
-    
-    return {
-      type: ParserTypes.MAP_DECLARATION,
-      name,
-      value
-    };
-  }
-  */
-  
   parseMap() {
     this.expectKeyword("Map");
     
     const name = this.expect("IDENTIFIER").value;
     
     // optional assignment
-    let value = null;
+    let value;
     
     if (this.current().type === "ASSIGNMENT") {
       this.expect("ASSIGNMENT");
@@ -299,7 +293,7 @@ export class Parser {
       
       let index = null;
       
-      // hobbies[10]
+      // a[10]
       if (this.match("LBRACKET")) {
         
         this.advance();
@@ -338,17 +332,19 @@ export class Parser {
     
     this.expect("BLOCK_END");
     
-    return {
+    return this.node({
       type: ParserTypes.MAP_LITERAL,
       properties
-    };
+    });
   }
   
   parseSwitch() {
     this.expectKeyword("switch");
     
     this.expect("LEFT_PARENTHESIS");
+    
     const discriminant = this.parseExpression();
+    
     this.expect("RIGHT_PARENTHESIS");
     
     this.expect("BLOCK_START");
@@ -362,13 +358,12 @@ export class Parser {
       
       this.skipNewlines();
       
-      // =========================
       // CASE
-      // =========================
+      
       if (this.matchKeyword("case")) {
         this.advance(); // consume 'case'
         
-        const value = this.parseExpression();
+        const value = this.node(this.parseExpression());
         this.expect("COLON");
         
         this.skipNewlines();
@@ -380,8 +375,9 @@ export class Parser {
           !this.matchKeyword("default") &&
           !this.match("BLOCK_END")
         ) {
-          this.skipNewlines();
+          
           statements.push(this.parseStatement());
+          
           this.skipNewlines();
         }
         
@@ -393,9 +389,8 @@ export class Parser {
         continue;
       }
       
-      // =========================
       // DEFAULT
-      // =========================
+      
       if (this.matchKeyword("default")) {
         this.advance(); // consume 'default'
         this.expect("COLON");
@@ -407,8 +402,9 @@ export class Parser {
         while (
           !this.match("BLOCK_END")
         ) {
-          this.skipNewlines();
+          
           statements.push(this.parseStatement());
+          
           this.skipNewlines();
         }
         
@@ -419,7 +415,7 @@ export class Parser {
         continue;
       }
       
-      throw new Error(`[Zen Error] parser: Unexpected token in switch`);
+      this.IRB.emitError("SyntaxError", `Unexpected token '${this.current.value}' in switch`, this.lineAndColumn());
     }
     
     this.expect("BLOCK_END");
@@ -431,7 +427,6 @@ export class Parser {
       defaultCase
     };
   }
-  
   
   parseStruct() {
     this.expectKeyword("struct");
@@ -459,9 +454,8 @@ export class Parser {
       
       const nameToken = this.expect("IDENTIFIER");
       
-      // =========================
       // METHOD DETECTION
-      // =========================
+      
       if (this.match("LEFT_PARENTHESIS")) {
         const method = this.parseFunction(true, isAsyncMethod);
         method.name = nameToken.value;
@@ -470,9 +464,8 @@ export class Parser {
         continue;
       }
       
-      // =========================
       // FIELD PARSE
-      // =========================
+      
       if (this.match("IDENTIFIER")) {
         // fixed-size array type: arr[10]
         const baseType = this.advance().value;
@@ -482,7 +475,7 @@ export class Parser {
           this.advance();
           
           if (this.match("RBRACKET")) {
-            throw new Error("[Zen Error] parser: Array size missing");
+            this.IRB.emitError("ArrayError", "Array size missing", this.lineAndColumn());
           }
           
           const size = this.parseExpression();
@@ -502,10 +495,10 @@ export class Parser {
         // int, bool, string, double, List, Map
         const typeNode = this.parseType();
         
-        fields.push({
+        fields.push(this.node({
           name: nameToken.value,
           ...typeNode
-        });
+        }));
       }
       
       // formatting support
@@ -515,20 +508,20 @@ export class Parser {
     
     this.expect("BLOCK_END");
     
-    return {
+    return this.node({
       type: ParserTypes.STRUCT,
       name,
       fields,
       methods
-    };
+    });
   }
   
   expectLessThan() {
     const t = this.current();
     
-    if (t?.type !== "COMPARISON" || t?.value !== "<") {
-      throw new Error(
-        `[Zen Error] parser: Expected LESS_THAN '<', got ${t?.value}`
+    if (t.type !== "COMPARISON" || t.value !== "<") {
+      this.IRB.emitError("SyntaxError",
+        `Expected LESS_THAN '<', got ${t.value}`, this.lineAndColumn()
       );
     }
     
@@ -538,10 +531,8 @@ export class Parser {
   expectGreaterThan() {
     const t = this.current();
     
-    if (t?.type !== "COMPARISON" || t?.value !== ">") {
-      throw new Error(
-        `[Zen Error] parser: Expected GREATER_THAN '>', got ${t?.value}`
-      );
+    if (t.type !== "COMPARISON" || t.value !== ">") {
+      this.IRB.emitError("SyntaxError", `Expected GREATER_THAN '>', got ${t.value}`, this.lineAndColumn());
     }
     
     return this.advance();
@@ -577,9 +568,7 @@ export class Parser {
     
     else {
       
-      throw new Error(
-        `[Zen Error] parser: Invalid List generic type`
-      );
+      this.IRB.emitError("SyntaxError", `Invalid List generic type`, this.lineAndColumn());
     }
     
     // >
@@ -614,13 +603,13 @@ export class Parser {
     
     else {
       
-      value = {
+      value = this.node({
         type: ParserTypes.LIST_LITERAL,
         elements: []
-      };
+      });
     }
     
-    return {
+    return this.node({
       type: ParserTypes.VARIABLE_DECLARATION,
       dataType: "List",
       isConstant,
@@ -628,7 +617,7 @@ export class Parser {
       name,
       value,
       isList: true
-    };
+    });
   }
   
   parseImport() {
@@ -650,11 +639,11 @@ export class Parser {
     
     const source = this.expect("string").value;
     
-    return {
+    return this.node({
       type: ParserTypes.IMPORT,
       names,
       source
-    };
+    });
   }
   
   parseExport() {
@@ -673,10 +662,10 @@ export class Parser {
     
     this.expect("RIGHT_PARENTHESIS");
     
-    return {
+    return this.node({
       type: ParserTypes.EXPORT,
       names
-    };
+    });
   }
   
   parseDoWhile() {
@@ -684,29 +673,27 @@ export class Parser {
     
     let body;
     
-    // =========================
     // BODY
-    // =========================
+    
     if (this.match("BLOCK_START")) {
       body = this.parseBlock();
     } else {
       body = this.parseStatement();
     }
     
-    // =========================
     // EXPECT WHILE
-    // =========================
+    
     this.expectKeyword("while");
     
     this.expect("LEFT_PARENTHESIS");
     const condition = this.parseExpression();
     this.expect("RIGHT_PARENTHESIS");
     
-    return {
+    return this.node({
       type: ParserTypes.DO_WHILE,
       body,
       condition
-    };
+    });
   }
   
   parseWhileLoop() {
@@ -723,26 +710,18 @@ export class Parser {
       body = this.parseStatement();
     }
     
-    return {
+    return this.node({
       type: ParserTypes.WHILE,
       condition,
       body
-    };
+    });
   }
   
   parseType(fromRet) {
     
-    // =========================
-    // GENERIC TYPE SUPPORT
-    // =========================
-    
-    //if (!fromRet) {
-    
     if (this.matchKeyword("List")) {
       return this.parseListGeneric();
-      // }
-      
-      // ADD MAP SUPPORT HERE
+    }
       if (this.matchKeyword("Map")) {
         this.advance();
         
@@ -751,7 +730,6 @@ export class Parser {
           dimensions: []
         };
       }
-    }
     
     let baseType;
     
@@ -763,14 +741,13 @@ export class Parser {
       baseType = this.expectKeyword("List").value;
     }
     
-    // (safe fallback for Map in typed contexts)
     else if (this.matchKeyword("Map")) {
       baseType = this.expectKeyword("Map").value;
     }
     
     else {
-      throw new Error(
-        `SyntaxError Unknown type '${this.current()?.value}'`
+      this.IRB.emitError("SyntaxError",
+        `Unknown type '${this.current().value}'`, this.lineAndColumn()
       );
     }
     
@@ -790,10 +767,10 @@ export class Parser {
       dimensions.push(size);
     }
     
-    return {
+    return this.node({
       type: baseType,
       dimensions
-    };
+    });
   }
   
   parseFunction(isInsideMethod = false, isAsyncFn = false) {
@@ -810,8 +787,8 @@ export class Parser {
     if (!isInsideMethod) {
       name = this.expect("IDENTIFIER").value;
       if (name.startsWith("_")) {
-        throw new Error(
-          `NamingError : Illegal identifier '${name}'. '_' prefix is reserved for Zen internal symbols (stdlib/runtime)`
+        this.IRB.emitError("NamingError"
+          `Illegal identifier '${name}'. '_' prefix is reserved for Zen internal symbols`, this.lineAndColumn()
         );
       }
     }
@@ -840,8 +817,8 @@ export class Parser {
         isRest
       };
       if (isRest && !this.match("RIGHT_PARENTHESIS")) {
-        throw new Error(
-          "SyntaxError rest parameter must be last"
+        this.IRB.emitError("SyntaxError",
+          `rest ${name} parameter must be last`, this.lineAndColumn()
         );
       }
       if (this.match("ASSIGNMENT")) {
@@ -863,9 +840,7 @@ export class Parser {
     
     let returnType;
     
-    // =========================
     // IMPLICIT VOID
-    // =========================
     
     if (this.match("BLOCK_START")) {
       this.skipNewlines()
@@ -875,9 +850,7 @@ export class Parser {
       };
     }
     
-    // =========================
     // EXPLICIT VOID
-    // =========================
     
     else if (this.matchKeyword("void")) {
       this.skipNewlines()
@@ -887,9 +860,7 @@ export class Parser {
       };
     }
     
-    // =========================
     // AUTO RETURN INFERENCE
-    // =========================
     
     else if (
       this.match("KEYWORD") &&
@@ -904,9 +875,7 @@ export class Parser {
       };
     }
     
-    // =========================
     // NORMAL TYPE
-    // =========================
     
     else {
       
@@ -915,14 +884,14 @@ export class Parser {
     
     const body = this.parseBlock();
     
-    return {
+    return this.node({
       type: ParserTypes.FUNCTION_DECLARATION,
       name,
       isAsync: isAsyncFn,
       params,
       returnType,
       body
-    };
+    });
   }
   
   parseLoop() {
@@ -930,9 +899,7 @@ export class Parser {
     this.expectKeyword("loop");
     this.expect("LEFT_PARENTHESIS");
     
-    // =====================================================
     // LOOP OF / LOOP IN DETECTION
-    // =====================================================
     
     const next1 = this.tokens[this.pos];
     const next2 = this.tokens[this.pos + 1];
@@ -948,14 +915,11 @@ export class Parser {
       next2?.type === "KEYWORD" &&
       next2.value === "in";
     
-    // =====================================================
     // LOOP OF (ARRAY / LIST)
     // loop (int i of arr)
-    // =====================================================
     
     if (isLoopOf) {
       
-      //const varType = this.expect("TYPE").value;
       const varName = this.expect("IDENTIFIER").value;
       
       this.expectKeyword("of");
@@ -970,17 +934,14 @@ export class Parser {
       
       return this.node({
         type: ParserTypes.LOOP_OF,
-        // varType,
         varName,
         iterable,
         body
       });
     }
     
-    // =====================================================
     // LOOP IN (MAP)
     // loop (key in map)
-    // =====================================================
     
     if (isLoopIn) {
       
@@ -1004,17 +965,15 @@ export class Parser {
       });
     }
     
-    // =====================================================
-    // C-STYLE LOOP
+    
     // loop (init, condition, update)
-    // =====================================================
     
     let first;
     
     if (this.match("TYPE") || this.matchKeyword("auto")) {
-      first = this.parseVariableDeclaration();
+      first = this.node(this.parseVariableDeclaration());
     } else {
-      first = this.parseExpression();
+      first = this.node(this.parseExpression());
     }
     
     this.expect("COMMA");
@@ -1028,29 +987,8 @@ export class Parser {
     if (this.match("COMMA")) {
       
       this.advance();
-      
-      let third;
-      
-      if (
-        this.match("IDENTIFIER") && ["PLUS_PLUS", "MINUS_MINUS"].includes(
-          this.tokens[this.pos + 1]?.type
-        )
-      ) {
-        const name = this.expect("IDENTIFIER").value;
-        const opToken = this.advance();
-        
-        third = {
-          type: ParserTypes.UNARY_EXPRESSION,
-          operator: opToken.value,
-          argument: {
-            type: ParserTypes.VARIABLE,
-            name
-          }
-        };
-        
-      } else {
-        third = this.node(this.parseExpression());
-      }
+
+      let third = this.parseExpression();
       
       init = first;
       condition = second;
@@ -1125,15 +1063,15 @@ export class Parser {
       this.skipNewlines();
     }
     
-    return {
-      type: "CONDITIONAL",
-      if: {
+    return this.node({
+      type: ParserTypes.CONDITIONAL,
+      "if": {
         condition: ifCondition,
         body: ifBody
       },
       elseIf,
-      else: elseBody ? { body: elseBody } : null
-    };
+      "else": elseBody ? { body: elseBody } : null
+    });
   }
   
   parseBlock() {
@@ -1158,10 +1096,10 @@ export class Parser {
     
     this.expect("BLOCK_END");
     
-    return {
+    return this.node({
       type: ParserTypes.BLOCK,
       body
-    };
+    });
   }
   
   parseVariableDeclaration() {
@@ -1179,9 +1117,7 @@ export class Parser {
     
     const name = this.expect("IDENTIFIER").value;
     
-    // =========================
     // ARRAY DIMENSIONS
-    // =========================
     
     const dimensions = [];
     
@@ -1192,8 +1128,8 @@ export class Parser {
       const dim = this.parseExpression();
       
       if (dim.type !== ParserTypes.INT && dim.type !== ParserTypes.BINARY_EXPRESSION) {
-        throw new Error(
-          "[Zen Error] TypeError: array dimension must be int or constant expression"
+        this.IRB.emitError("TypeError",
+          "array dimension must be int or constant expression", this.lineAndColumn()
         );
       }
       
@@ -1203,11 +1139,9 @@ export class Parser {
     }
     
     let value = null;
-    let inferedType = null;
+    let inferredType = null;
     
-    // =========================
     // EXPLICIT INITIALIZER
-    // =========================
     
     if (this.match("ASSIGNMENT")) {
       
@@ -1216,94 +1150,86 @@ export class Parser {
       value = this.parseExpression();
       
       if (TYPES.includes(value.type)) {
-        inferedType = value.type;
+        inferredType = value.type;
       }
       
     }
     
-    // =========================
     // DEFAULT INITIALIZATION
-    // =========================
     
     else {
       
-      // -------------------------
       // AUTO INVALID
-      // -------------------------
       
       if (dataType === "auto") {
-        throw new Error(
-          "[Zen Error] parser: auto variable requires initializer"
+        this.IRB.emitError(
+          "TypeError",
+          "auto variable requires initializer",
+          this.lineAndColumn()
         );
       }
       
-      // -------------------------
       // ARRAY DEFAULT INIT
-      // -------------------------
       
       if (dimensions.length > 0) {
         
-        value = {
+        value = this.node({
           type: ParserTypes.ARRAY,
           elements: []
-        };
+        });
       }
       
-      // -------------------------
       // PRIMITIVE DEFAULT INIT
-      // -------------------------
       
       else {
         
         // int
         if (dataType === "int") {
-          value = {
+          value = this.node({
             type: ParserTypes.INT,
             value: 0
-          };
+          });
         }
         
         // double
         else if (dataType === "double") {
-          value = {
+          value = this.node({
             type: ParserTypes.DOUBLE,
             value: 0.0
-          };
+          });
         }
         
         // string
         else if (dataType === "string") {
-          value = {
+          value = this.node({
             type: ParserTypes.STRING,
             value: ""
-          };
+          });
         }
         
         // bool
         else if (dataType === "bool") {
-          value = {
-            type: ParserTypes.BOOL,
+          value = this.node({
+            type: ParserTypes.BOOLEAN,
             value: 0
-          };
+          });
         }
       }
     }
     
-    return {
+    return this.node({
       type: ParserTypes.VARIABLE_DECLARATION,
       dataType,
-      inferedType,
+      inferredType,
       isArray: dimensions.length > 0,
       isConstant: isConst,
       name,
       dimensions,
       value
-    };
+    });
   }
   
-  // =========================
   // EXPRESSIONS
-  // =========================
   
   parseExpression() {
     this.skipNewlines();
@@ -1311,9 +1237,7 @@ export class Parser {
     return this.parseAssignment();
   }
   
-  // =========================
   // ASSIGNMENT (=, +=, etc)
-  // =========================
   
   parseAssignment() {
     let expr = this.parseTernary();
@@ -1323,32 +1247,32 @@ export class Parser {
       const value = this.parseAssignment();
       
       if (expr.type === ParserTypes.ARRAY_ACCESS) {
-        return {
+        return this.node({
           type: ParserTypes.ARRAY_ACCESS,
           array: expr.array,
           index: expr.index,
           operator: op,
           value
-        };
+        });
       }
       
       if (expr.type === ParserTypes.VARIABLE) {
-        return {
+        return this.node({
           type: ParserTypes.ASSIGNMENT,
           name: expr.name,
           operator: op,
           value
-        };
+        });
       }
       
       if (expr.type === ParserTypes.MEMBER_ACCESS) {
-        return {
+        return this.node({
           type: ParserTypes.MEMBER_ASSIGNMENT,
           object: expr.object,
           field: expr.field,
           operator: op,
           value
-        };
+        });
       }
     }
     
@@ -1368,12 +1292,12 @@ export class Parser {
       this.skipNewlines()
       const falseExpr = this.parseExpression();
       this.skipNewlines()
-      return {
+      return this.node({
         type: ParserTypes.TERNARY,
         condition,
         trueExpr,
         falseExpr
-      };
+      });
     }
     
     return condition;
@@ -1387,22 +1311,21 @@ export class Parser {
     
     while (this.match("LOGICAL")) {
       const op = this.advance().value;
-      const right = this.parseEquality();
+      const right = this.node(this.parseEquality());
       
-      expr = {
+      expr = this.node({
         type: ParserTypes.BINARY_EXPRESSION,
         left: expr,
         operator: op,
         right
-      };
+      });
     }
     
     return expr;
   }
   
-  // =========================
   // COMPARISON
-  // =========================
+  
   parseEquality() {
     this.skipNewlines();
     let expr = this.node(this.parseComparison());
@@ -1430,20 +1353,19 @@ export class Parser {
       const op = this.advance().value;
       const right = this.node(this.parseTerm());
       
-      expr = {
+      expr = this.node({
         type: ParserTypes.BINARY_EXPRESSION,
         left: expr,
         operator: op,
         right
-      };
+      });
     }
     
     return expr;
   }
   
-  // =========================
   // + -
-  // =========================
+  
   parseTerm() {
     this.skipNewlines();
     let expr = this.node(this.parseFactor());
@@ -1452,20 +1374,20 @@ export class Parser {
       const op = this.advance().value;
       const right = this.node(this.parseFactor());
       
-      expr = {
+      expr = this.node({
         type: ParserTypes.BINARY_EXPRESSION,
         left: expr,
         operator: op,
         right
-      };
+      });
     }
     
     return expr;
   }
   
-  // =========================
+  
   // * / %
-  // =========================
+  
   parseFactor() {
     this.skipNewlines()
     let expr = this.node(this.parseUnary());
@@ -1478,12 +1400,12 @@ export class Parser {
       const op = this.advance().value;
       const right = this.node(this.parseUnary());
       
-      expr = {
+      expr = this.node({
         type: ParserTypes.BINARY_EXPRESSION,
         left: expr,
         operator: op,
         right
-      };
+      });
     }
     
     return expr;
@@ -1500,12 +1422,12 @@ export class Parser {
       const op = this.advance().value;
       const argument = this.node(this.parseUnary());
       
-      return {
+      return this.node({
         type: ParserTypes.UNARY_EXPRESSION,
         operator: op,
         argument,
         isPostfix: false
-      };
+      });
     }
     
     return this.node(this.parsePostfix());
@@ -1523,11 +1445,11 @@ export class Parser {
         this.skipNewlines()
         const field = this.expect("IDENTIFIER").value;
         this.skipNewlines();
-        expr = {
+        expr = this.node({
           type: ParserTypes.MEMBER_ACCESS,
           object: expr,
           field
-        };
+        });
         
         continue;
       }
@@ -1595,18 +1517,17 @@ export class Parser {
       }
       
       
-      
-      
       // existing postfix ++ --
+      
       if (this.match("PLUS_PLUS") || this.match("MINUS_MINUS")) {
         const op = this.advance().value;
         
-        expr = {
+        expr = this.node({
           type: ParserTypes.UNARY_EXPRESSION,
           operator: op,
           argument: expr,
           isPostfix: true
-        };
+        });
         
         continue;
       }
@@ -1622,17 +1543,18 @@ export class Parser {
     
     const elements = [];
     
-    this.skipNewlines(); //  important
+    this.skipNewlines();
     
     while (!this.match("RBRACKET")) {
       
       elements.push(this.parseExpression());
       
-      this.skipNewlines(); // after element
+      this.skipNewlines();
       
       if (this.match("COMMA")) {
         this.advance();
-        this.skipNewlines(); // after comma
+        
+        this.skipNewlines();
       } else {
         break;
       }
@@ -1646,9 +1568,9 @@ export class Parser {
     });
   }
   
-  // =========================
-  // PRIMARY (VALUES)
-  // =========================
+  
+  // PRIMARY 
+  
   parsePrimary() {
     this.skipNewlines();
     
@@ -1657,46 +1579,46 @@ export class Parser {
     // NUMBER
     if (token.type === "int") {
       this.advance();
-      return {
+      return this.node({
         type: ParserTypes.INT,
         value: token.value
-      };
+      });
     }
     
     // DOUBLE
     if (token.type === "double") {
       this.advance();
-      return {
+      return this.node({
         type: ParserTypes.DOUBLE,
         value: token.value
-      };
+      });
     }
     
     // STRING
     if (token.type === "string") {
       this.advance();
-      return {
+      return this.node({
         type: ParserTypes.STRING,
         value: token.value
-      };
+      });
     }
     
     // BOOLEAN
     if (token.type === "bool") {
       this.advance();
-      return {
+      return this.node({
         type: ParserTypes.BOOLEAN,
         value: token.value === true ? 1 : 0
-      };
+      });
     }
     
     if (this.matchKeyword("this")) {
       this.advance();
       
-      return {
+      return this.node({
         type: "THIS",
         value: "this"
-      };
+      });
     }
     
     // VARIABLE
@@ -1708,10 +1630,10 @@ export class Parser {
         return this.parseCall(token.value, false);
       }
       
-      return {
+      return this.node({
         type: ParserTypes.VARIABLE,
         name: token.value
-      };
+      });
     }
     
     if (this.match("BLOCK_START")) {
@@ -1732,7 +1654,11 @@ export class Parser {
         return expr;
       }
       
-      throw new Error("Expected async call after await");
+      this.IRB.emitError(
+        "SyntaxError",
+        "await must be followed by an async function call",
+        this.lineAndColumn()
+      );
     }
     
     if (this.match("LBRACKET") && this.tokens[this.pos - 1].type !== "IDENTIFIER") {
@@ -1749,12 +1675,16 @@ export class Parser {
       return expr;
     }
     
-    throw new Error("Unexpected token: " + JSON.stringify(token));
+    this.IRB.emitError(
+      "SyntaxError",
+      `Unexpected token '${token.value}'`,
+      this.lineAndColumn()
+    );
   }
   
-  // =========================
+  
   // FUNCTION CALL
-  // =========================
+  
   parseCall(name, isAwait = false) {
     
     this.expect("LEFT_PARENTHESIS");
@@ -1763,7 +1693,7 @@ export class Parser {
     
     while (!this.match("RIGHT_PARENTHESIS")) {
       this.skipNewlines()
-      args.push(this.parseExpression());
+      args.push(this.node(this.parseExpression()));
       this.skipNewlines();
       if (this.match("COMMA")) {
         
@@ -1777,13 +1707,13 @@ export class Parser {
     this.skipNewlines();
     this.expect("RIGHT_PARENTHESIS");
     
-    return {
+    return this.node({
       isInbuilt: BUILTIN_FUNCTIONS.includes(name),
       type: ParserTypes.CALL,
       name,
       isAwait,
       args
-    };
+    });
   }
   
 }
