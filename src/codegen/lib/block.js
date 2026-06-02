@@ -5,7 +5,7 @@ export class Block {
   }
   
   
-  block(blockNode, globalScope, meta = false) {
+  block(blockNode, globalScope) {
     
     if (!blockNode) return;
     
@@ -14,7 +14,7 @@ export class Block {
       this.IRB.enterScope();
       
       for (const stmt of blockNode.body || []) {
-        this.codegen.dispatch(stmt, globalScope, true, meta); // third param: flag for if its inside any block to prevent double function hoisting 
+        this.codegen.dispatch(stmt, globalScope, true); // third param: flag for if its inside any block to prevent double function hoisting 
       }
       
       this.IRB.exitScope();

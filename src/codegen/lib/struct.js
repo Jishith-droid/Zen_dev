@@ -207,12 +207,13 @@ export class Struct {
         this.IRB.getVar("this").ptr :
         this.IRB.getVar(base).ptr;
       
-      let needsLoad = true;
+      let needsLoad = variable.needsLoad;
+      
       // walk chain except last field
       for (let i = 0; i < fields.length; i++) {
         
         const field = fields[i];
-        needsLoad = false;
+        
         const meta = currentLayout[field];
         
         if (!meta) {
@@ -229,9 +230,12 @@ export class Struct {
         const temp = this.IRB.newTemp();
         let t;
         
-        if (variable.needsLoad) {
+        this.IRB.declareOneTime("zen_map_get", "declare ptr @zen_map_get(ptr, ptr)");
+        
+        if (needsLoad) {
           t = this.IRB.newTemp()
           this.IRB.emit(`${t} = load ptr, ptr ${currentPtr}`)
+          needsLoad = false;
         } else {
           t = currentPtr;
         }

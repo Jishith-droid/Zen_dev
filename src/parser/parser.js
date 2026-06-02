@@ -604,7 +604,7 @@ export class Parser {
     else {
       
       value = this.node({
-        type: ParserTypes.LIST_LITERAL,
+        type: ParserTypes.ARRAY,
         elements: []
       });
     }

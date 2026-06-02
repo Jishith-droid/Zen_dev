@@ -692,7 +692,7 @@ const FORMAT_MAP = {
     fmtType: "[6 x i8]",
     varType: "i8*",
     decl: "scan_string",
-    ir: '@.scan_string = private constant [6 x i8] c"%[^\n]\\00"',
+    ir: '@.scan_string = private constant [6 x i8] c"%[^\\0A]\\00"',
     zero: null
   }
 }

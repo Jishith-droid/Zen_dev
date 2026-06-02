@@ -1,7 +1,8 @@
 export class ZenList {
-  constructor(IRB, expr) {
+  constructor(IRB, expr, infer) {
     this.IRB = IRB;
     this.expr = expr;
+    this.infer = infer;
   }
   
   list(node, globalScope) {
@@ -233,8 +234,7 @@ export class ZenList {
       rootList = listTemp;
       
       const validate = (el, expectedType) => {
-        
-        // if it's a list → go deeper
+        //  If its a nested array/list go deeper
         if (el.type === "ARRAY" || el.type === "LIST") {
           for (const sub of el.elements) {
             validate(sub, expectedType);
@@ -242,14 +242,31 @@ export class ZenList {
           return;
         }
         
-        // leaf check
-        if (el.type !== expectedType) {
+        // Unpack UNARY_EXPRESSION for the type check
+        let actualType = el.type;
+        if (el.type === "UNARY_EXPRESSION" && el.operator === "-") {
+
+          actualType = el.argument.type;
+        }
+        
+        if (el.type === "variable") {
+          const data = this.IRB.getVar(el.name);
+          actualType = data.type;
+        }
+        
+        if (el.type === "BINARY_EXPRESSION") {
+          actualType = this.infer.infer(el);
+        }
+        
+        // Leaf check using the resolved actual type
+        if (actualType !== expectedType) {
           this.IRB.emitError(
             "TypeError",
-            `List ${name} expected ${expectedType} but got ${el.type}`, node
+            `List ${name} expected ${expectedType} but got ${actualType}`, node
           );
         }
       };
+      
       
       if (
         node.value &&

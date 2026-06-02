@@ -42,7 +42,7 @@ export class CodeGen {
     this.os = new OS(this.IRB, this.expr);
     this.http = new ZenHttp(this.IRB, this.expr);
     this.sys = new ZenSys(this.IRB, this.expr);
-    this.list = new ZenList(this.IRB, this.expr);
+    this.list = new ZenList(this.IRB, this.expr, this.infer);
     this.IRB.setCall(this.expr);
     
     this.io = new IO(this.IRB, this.expr);
@@ -116,15 +116,16 @@ export class CodeGen {
         }
         
         const returnType = node.returnType === "void" ?
-          "void" :
-          node.returnType.type;
+          "void" : node.returnType.type;
+           
         
         const isArrayRet = returnType === "void" ? false : returnType === "List" ? false : node.returnType?.dimensions.length > 0;
         const retGeneric = returnType === "List" ? this.IRB.getDeepestGeneric(node.returnType.generic) : returnType;
+        const generic = returnType === "List" ? node.returnType : null;
         
         if (isArrayRet) this.IRB.emitError("SemanticError", `function ${name} cannot return array`, node);
         
-        const data = { name: node.name, returnType, params: node.params, retGeneric }
+        const data = { name: node.name, returnType, params: node.params, retGeneric, generic }
         
         this.IRB.setFunction(node.name, data);
         
@@ -176,7 +177,7 @@ export class CodeGen {
     
   }
   
-  dispatch(node, globalScope = true, fromInsideBlock = false, meta) {
+  dispatch(node, globalScope = true, fromInsideBlock = false) {
     // if its direct node dont again hoist function. we can toggle this in src/codegen/lib/block.js
     
     if (!this.IRB.diaganosticMode) {
@@ -201,14 +202,14 @@ export class CodeGen {
         }
         
         const returnType = node.returnType === "void" ?
-          "void" :
-          node.returnType.type;
+          "void" : node.returnType.type
         
-        const isArrayRet = returnType === "void" ? false : node.returnType?.dimensions.length > 0;
-        
+        const isArrayRet = returnType === "void" ? false : returnType === "List" ? false : node.returnType?.dimensions.length > 0;
+        const retGeneric = returnType === "List" ? this.IRB.getDeepestGeneric(node.returnType.generic) : returnType;
+        const generic = returnType === "List" ? node.returnType : null;
         if (isArrayRet) this.IRB.emitError("SemanticError", `function ${name} cannot return array`, node);
         
-        const data = { name: node.name, returnType, params: node.params }
+        const data = { name: node.name, returnType, params: node.params, generic }
         
         this.IRB.setFunction(node.name, data);
       }
@@ -264,7 +265,7 @@ export class CodeGen {
         return // ignore 
         
       case 'RETURN':
-        this.fn.handleReturn(node, meta);
+        this.fn.handleReturn(node);
         break;
         
       case 'MAP_DECLARATION':
@@ -312,15 +313,29 @@ export class CodeGen {
     const isStruct = node?.struct_ref;
     const isList = node.isList;
     
+    if (isList) {
+      this.list.list(node, globalScope);
+      return
+    }
+    
     if (isTernary) {
       
       const t = this.ternary.ternary(node.value);
       const name = node.name;
-      this.IRB.guardGlobal(name);
+      this.IRB.guardGlobal(name, node);
+      this.IRB.guardStackOp("TERNARY", node);
       const gName = this.IRB.newGlobalTemp()
       const lName = this.IRB.newTemp();
       
       if (globalScope) {
+        
+        if (t.isList) {
+        this.IRB.emitError(
+          "TypeError",
+          `${node.name} expect ${t.type} but got 'List'`, node
+        );
+        }
+        
         const initialValue = this.IRB.initialValue(node.dataType);
         
         this.IRB.globals.push(`${gName} = global ${t.llvmType} ${initialValue}`);
@@ -341,11 +356,6 @@ export class CodeGen {
         needsLoad: true
       }));
       return;
-    }
-    
-    if (isList) {
-      this.list.list(node, globalScope);
-      return
     }
     
     if (isStruct) {

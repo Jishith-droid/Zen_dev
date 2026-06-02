@@ -5,6 +5,13 @@ switch case ✅
 Normal loop ✅ 
 while ✅ 
 do while ✅ 
-loop of 
+loop of ✅ 
+loop in ✅ 
+ternary ✅ 
+function ✅ 
+inference ✅ 
 variable declaration all expression for primitive ✅ 
-
+Map ✅ 
+list ✅ 
+array ✅ 
+struct 

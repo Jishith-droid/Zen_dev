@@ -238,15 +238,10 @@
       }
       
       const orgData = this.IRB.getVar(name, node);
-      const isConstant = orgData.isConstant;
       
       if (isCall) {
         const isGlobal = orgData.isGlobal;
         return this.callVariable(this.IRB.normalizeNode(node), isGlobal);
-      }
-      
-      if (isConstant) {
-        this.IRB.emitError("ConstError", `Cannot reassign constant '${name}'`, node);
       }
       
       if (orgData?.isStruct) {
@@ -282,6 +277,11 @@
       const orgPtr = orgData.ptr;
       const orgType = orgData.type;
       const llvmType = orgData.llvmType;
+      const isConstant = orgData.isConstant;
+      
+      if (isConstant) {
+        this.IRB.emitError("ConstError", `Cannot reassign constant '${name}'`, node);
+      }
       
       this.IRB.bindLineColumn(node)
       
@@ -294,12 +294,14 @@
         );
       }
       
+      if (orgData.isList) {
       if (orgData.isList !== expr.isList) {
         this.IRB.emitError(
           "TypeError",
           `variable '${name}' expected ${orgData.isList ? "List" : "non-List"} but got ${expr.isList ? "List" : expr.type}`,
           node
         );
+      }
       }
       
       this.IRB.emitExpr(expr);

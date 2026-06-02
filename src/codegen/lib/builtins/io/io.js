@@ -45,6 +45,7 @@ export class IO {
       arg.column = node?.column;
       
       expr = this.expr.handleExpression(arg, false);
+      
       if (expr.local.length) this.IRB.emit(expr.local.join("\n"));
       if (expr.global.length) this.IRB.globals.push(expr.global.join("\n"));
       type = expr.type;
@@ -123,13 +124,6 @@ export class IO {
       }
       
       const argType = arg[0].type;
-      
-      /*if (argType !== "string") {
-        this.IRB.emitError(
-          "TypeError",
-          `input() expected type string but got ${argType}`, node
-        );
-      }*/
       
       this.screen(node.value);
     }

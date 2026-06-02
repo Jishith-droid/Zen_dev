@@ -231,7 +231,7 @@ export class Loop {
     
     const indexPtr = this.IRB.newTemp();
     this.IRB.emit(`${indexPtr} = alloca i32`);
-
+    
     this.IRB.emit(`store i32 0, ptr ${indexPtr}`);
     // resolve iterable
     
@@ -315,51 +315,40 @@ export class Loop {
         `${elemTmp} = getelementptr ${expr.llvmType}, ptr ${expr.ptr}, i32 0, i32 ${idxTmp}`
       );
       
-      const ptr = this.IRB.newTemp();
-      this.IRB.emit(`${ptr} = alloca ${expr.llvmType}`);
-      this.IRB.emit(`store ${expr.llvmType} ${elemTmp}, ptr ${ptr}`);
       
-      const valTmp = this.IRB.newTemp();
-      
-      this.IRB.emit(
-        `${valTmp} = load ${llvmVarType}, ptr ${elemTmp}`
-      );
-      
-      const nextDims =
-        expr.dimData?.slice(1);
+      const nextDims = expr.dimData?.slice(1);
       
       const isNested =
-        expr.dimData?.length > 1;
+      nextDims && nextDims.length > 0;
       
-      const nestedLLVM = isNested ?
-        nextDims.reduceRight(
+      if (isNested) {
+        const nextDims = expr.dimData?.slice(1);
+        
+        const nestedLLVM = nextDims.reduceRight(
           (inner, dim) => `[${dim} x ${inner}]`,
           llvmVarType
-        ) :
-        llvmVarType;
-      if (isNested) {
+        );
         
         this.IRB.setVar(varName, {
-          ptr,
+          ptr: elemTmp, 
           type: varType,
           llvmType: nestedLLVM,
-          needsLoad: true,
+          needsLoad: false, 
           isArray: true,
           length: nextDims?.[0],
-          dimensionsData: nextDims
+          dimensionsData: nextDims 
         });
         
       } else {
         
         const valTmp = this.IRB.newTemp();
-        
         this.IRB.emit(
           `${valTmp} = load ${llvmVarType}, ptr ${elemTmp}`
         );
         
         const ptr = this.IRB.newTemp();
         this.IRB.emit(`${ptr} = alloca ${llvmVarType}`);
-        this.IRB.emit(`store ${llvmVarType} ${elemTmp}, ptr ${ptr}`);
+        this.IRB.emit(`store ${llvmVarType} ${valTmp}, ptr ${ptr}`);
         
         this.IRB.setVar(varName, {
           ptr,
@@ -369,10 +358,12 @@ export class Loop {
           isArray: false
         });
       }
+      
     }
     else if (expr.isList) {
       
       let tm = this.IRB.newTemp();
+      
       if (expr.needsLoad) {
         this.IRB.emit(
           `${tm} = load ptr, ptr ${expr.ptr}`
@@ -402,10 +393,7 @@ export class Loop {
         fromLoopOf: true,
         needsLoad: true
       });
-      
-      
     }
-    
     
     this.block.block(body, false);
     
@@ -501,9 +489,10 @@ export class Loop {
     const startLabel = this.IRB.newLabel("map_loop_start");
     const bodyLabel = this.IRB.newLabel("map_loop_body");
     const endLabel = this.IRB.newLabel("map_loop_end");
+    const continueLabel = this.IRB.newLabel("map_loop_continue");
     const switchLabel = this.IRB.newLabel("map_loop_switch");
     
-    this.IRB.loopStack.push({ breakLabel: endLabel, continueLabel: startLabel });
+    this.IRB.loopStack.push({ breakLabel: endLabel, continueLabel });
     
     // INDEX ALLOCA
     
@@ -582,12 +571,14 @@ export class Loop {
     // Execute body
     this.block.block(body, false);
     
+    this.IRB.emit(`br label %${continueLabel}`);
+    
     // INCREMENT
+    
+    this.IRB.emit(`${continueLabel}:`);
     
     const incTmp = this.IRB.newTemp();
     this.IRB.emit(`${incTmp} = add i32 ${idxVal}, 1`);
-    this.IRB.emitStore("i32", incTmp, idxPtr);
-    
     this.IRB.emit(`store i32 ${incTmp}, ptr ${idxPtr}`);
     
     this.IRB.emit(`br label %${startLabel}`);

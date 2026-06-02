@@ -17,6 +17,24 @@ export class Ternary {
     // evaluate BOTH expressions early 
     const t = this.expr.handleExpression(node.trueExpr);
     const f = this.expr.handleExpression(node.falseExpr);
+    const tType = t.type;
+    const fType = f.type;
+    
+    if (tType !== fType) {
+      this.IRB.emitError(
+        "TypeError",
+        `ternary expression requires matching types, got '${tType}' and '${fType}'`,
+        node
+      );
+    }
+    
+    if (t.isList !== f.isList) {
+      this.IRB.emitError(
+        "TypeError",
+        `ternary expression requires matching types, got '${t.isList ? "List" : tType}' and '${f.isList ? "List" : fType}'`,
+        node
+      );
+    }
     
     this.IRB.emitExpr(t);
     this.IRB.emitExpr(f);
@@ -60,7 +78,8 @@ export class Ternary {
       llvmType: resultType,
       local: [],
       global: [],
-      isVarRef: false
+      isVarRef: false,
+      isList: t.isList || f.isList
     };
   }
 }

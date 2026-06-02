@@ -454,7 +454,8 @@ export class Expression {
             global: [],
             isList: true,
             isVarRef: true,
-            generic: fieldInfo.generic
+            generic: fieldInfo.generic,
+            needsLoad: true
           };
         }
         
@@ -528,6 +529,9 @@ export class Expression {
           
           switch (field) {
             case 'free':
+              
+              this.IRB.declareOneTime("zen_map_free", "declare void @zen_map_free(ptr)");
+              
               const t = this.IRB.newTemp();
               this.IRB.emit(`${t} = load ptr, ptr ${object.ptr}`);
               this.IRB.emit(`call void @zen_map_free(ptr ${t})`);
@@ -536,12 +540,13 @@ export class Expression {
               
               return { local: [], global: [] }
               
-            default:
+          /*  default:
               this.IRB.emitError(
                 "ReferenceError",
                 `Unknown map method '${field}'`,
                 node
               );
+              */
           }
           
           if (!currentLayout[field] && field !== "free") {
@@ -604,8 +609,6 @@ export class Expression {
               local: [],
               global: []
             };
-            
-            // DIRECT LIST PROPERTY HANDLING
             
             // DIRECT LIST PROPERTY HANDLING
             
@@ -701,6 +704,8 @@ export class Expression {
           }
         }
         
+        
+        
         // RETURN FINAL VALUE
         
         return {
@@ -730,12 +735,11 @@ export class Expression {
       if (isList) {
         
         const o =
-          this.handleExpression(node.object);
+         object// this.handleExpression(node.object);
         
         this.IRB.emitExpr(o);
         
-        let listPtr =
-          this.IRB.newTemp();
+        let listPtr = this.IRB.newTemp();
         
         if (!o.fromParam && o.needsLoad) {
           this.IRB.emit(
@@ -855,7 +859,7 @@ export class Expression {
           
           if (
             base.isMapValue ||
-            base.fromParam
+            base.fromParam || base?.isDirectCall
           ) {
             listTemp = base.ptr;
           } else {
@@ -888,7 +892,6 @@ export class Expression {
           
           const isNested =
             normalizedGeneric?.type === "List";
-          
           
           return {
             ptr: elemPtr,
@@ -1130,12 +1133,10 @@ export class Expression {
       
       if (node.operator === "-") {
         
-        const res = this.IRB.newTemp();
-        
         if (val.type === "int") {
-          local.push(`${res} = sub i32 0, ${v}`);
+      
           return {
-            ptr: res,
+            ptr: `-${v}`,
             type: "int",
             llvmType: "i32",
             local,
@@ -1147,31 +1148,11 @@ export class Expression {
         }
         
         if (val.type === "double") {
-          local.push(`${res} = fsub double 0.0, ${v}`);
+          
           return {
-            ptr: res,
+            ptr: `-${v}`,
             type: "double",
             llvmType: "double",
-            local,
-            global,
-            endLabel: null,
-            postOrPrefix: false,
-            isVarRef: false
-          };
-        }
-        
-        if (val.type === "bool") {
-          
-          // bool is i1 in LLVM
-          const ext = this.IRB.newTemp();
-          
-          local.push(`${ext} = zext i1 ${v} to i32`);
-          local.push(`${res} = sub i32 0, ${ext}`);
-          
-          return {
-            ptr: res,
-            type: "int",
-            llvmType: "i32",
             local,
             global,
             endLabel: null,
@@ -1463,11 +1444,7 @@ export class Expression {
       global.push(...LNode.global || []);
       
       const toBool = (val, type) => {
-        if (type === "bool") {
-          const t = this.IRB.newTemp();
-          local.push(`${t} = add i1 ${val}, 0`);
-          return t;
-        }
+        if (type === "bool") return val;
         
         const t = this.IRB.newTemp();
         

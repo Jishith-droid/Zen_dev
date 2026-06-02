@@ -1,5 +1,1 @@
-add i1 - should i32 
-line number mismatch
-switch case statement block variable undefined (cannot access) ✅ 
-if else if else ✅ 
-loop 
+

@@ -45,21 +45,23 @@ export class Call {
         global: valExpr.global,
         endLabel: null,
         isVarRef: false,
-        postOrPrefix: false
+        postOrPrefix: false,
+        isList: valExpr?.isList,
+        generic: valExpr?.generic
       };
     }
     
     const name = node.name;
     
     if (STD_FUNCTIONS.includes(name)) {
-    this.IRB.usedStdFunctions.add(name);
-    if (!this.IRB.functions.has(name)) {
+      this.IRB.usedStdFunctions.add(name);
+      if (!this.IRB.functions.has(name)) {
         this.IRB.setStdlibFunctions();
+      }
     }
-   }
     
     if (node.isInbuilt && !STD_FUNCTIONS.includes(name)) {
-
+      
       this.IRB.leaveFunction();
       return this.handleBuiltInCall(node, globalScope);
     }
@@ -267,20 +269,24 @@ export class Call {
         this.IRB.emit(local.join("\n"));
         this.IRB.globals.push(global.join("\n"));
       }
-      
+      const isList = fn.returnType === "List";
+      const isMap = fn.returnType === "Map";
       return {
         ptr: callTmp,
         type: fn.returnType,
-        llvmType: fn.returnType === "List" ?
+        llvmType: isList ?
           "%ZenList" : this.IRB.getLLVMType(fn.returnType),
+        generic: isList ? fn.generic : null,
         local: asStatement ? [] : local,
         global: asStatement ? [] : global,
         endLabel: null,
         isVarRef: false,
         postOrPrefix: false,
         layout,
-        isList: fn.returnType === "List",
-        isMap: fn.returnType === "Map"
+        needsLoad: false,
+        isList,
+        isMap,
+        isDirectCall: true
       };
     }
     
@@ -333,20 +339,24 @@ export class Call {
       this.IRB.globals.push(global.join("\n"));
     }
     
+    const isList = fn.returnType === "List";
+    const isMap = fn.returnType === "Map";
     return {
       ptr: tmp,
-      type: fn.returnType === "List" ? fn.retGeneric : fn.returnType,
-      llvmType: fn.returnType === "List" ?
+      type: isList ? fn.retGeneric : fn.returnType,
+      llvmType: isList ?
         "%ZenList" : this.IRB.getLLVMType(fn.returnType),
       local: asStatement ? [] : local,
       global: asStatement ? [] : global,
       endLabel: null,
       isVarRef: false,
+      generic: fn.returnType === "List" ? fn.generic : null,
       postOrPrefix: false,
       layout,
       needsLoad: false, // call not need load
-      isList: fn.returnType === "List",
-      isMap: fn.returnType === "Map"
+      isList,
+      isMap,
+      isDirectCall: true
     };
   }
   

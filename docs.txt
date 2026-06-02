@@ -6,7 +6,7 @@ out test_opt.ll
 runtime.c test_opt.o
 
 bash :
-> test.ll && nano test.ll && opt -O2 test.ll -S -o test_opt.ll && llc test_opt.ll -filetype=obj -o test_opt.o && clang test_opt.o runtime.o curlRuntime.o -lcurl listRuntime.o mapRuntime.o asyncRuntime.o zen_stdlib_opt.o constants.o -o out && ./out
+> test.ll && nano test.ll && opt -O2 test.ll -S -o test_opt.ll && llc test_opt.ll -filetype=obj -relocation-model=pic -o test_opt.o && clang test_opt.o runtime.o curlRuntime.o -lcurl listRuntime.o mapRuntime.o asyncRuntime.o zen_stdlib_opt.o constants.o -o out && ./out
 
 
 define ptr @_get_async(ptr %arg) {

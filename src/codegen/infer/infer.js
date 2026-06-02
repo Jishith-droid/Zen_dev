@@ -49,8 +49,7 @@ export class InferType {
         }
         
         if (data.isList) {
-          node.inferredType = "List";
-          return "List";
+          this.IRB.emitError("SemanticError", `function '${name}' not allowed 'List' return inference`, node);
         } else if (data.isMap) {
           node.inferredType = "Map";
           return "Map";
@@ -102,6 +101,10 @@ export class InferType {
         };
       }
       
+      case 'ARRAY': {
+        this.IRB.emitError("SemanticError", `List not allowed inference`, node);
+      }
+      
       case "ARRAY_ACCESS": {
         
         const data = this.IRB.getVar(node.array.name, node);
@@ -139,6 +142,10 @@ export class InferType {
             let currentLayout =
               this.IRB.maps.get(base.name);
             
+            if (!currentLayout) {
+              this.IRB.emitError("InternalError", `Unknown Map '${base.name}' layout`, node)
+            }
+            
             let currentType = "Map";
             let fieldInfo;
             
@@ -167,9 +174,15 @@ export class InferType {
         }
         
         // STRUCT ACCESS
-        
-        let currentType =
-          this.IRB.getVar(base.name, node).type;
+        let currentType;
+        if (base.value === "this") {
+          
+          currentType = this.IRB.currentStruct;
+          
+        } else {
+          
+          currentType = this.IRB.getVar(base.name, node).type;
+        }
         
         let fieldInfo;
         
@@ -194,26 +207,6 @@ export class InferType {
       // FUNCTION CALL
       
       case "CALL": {
-        
-        // normal function
-        if (node.name) {
-          
-          const fn =
-            this.IRB.getFunction(node.name);
-          
-          if (!fn) {
-            this.IRB.emitError(
-              "ReferenceError",
-              `Function '${node.name}' not found`,
-              node
-            );
-          }
-          
-          node.inferredType =
-            fn.returnType;
-          
-          return fn.returnType;
-        }
         
         // method call
         if (
@@ -241,6 +234,26 @@ export class InferType {
             this.IRB.emitError(
               "ReferenceError",
               `Method '${fullMethodName}' not found`,
+              node
+            );
+          }
+          
+          node.inferredType =
+            fn.returnType;
+          
+          return fn.returnType;
+        }
+        
+        // normal function
+        if (node.name) {
+          
+          const fn =
+            this.IRB.getFunction(node.name);
+          
+          if (!fn) {
+            this.IRB.emitError(
+              "ReferenceError",
+              `Function '${node.name}' not found`,
               node
             );
           }

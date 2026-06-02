@@ -1,0 +1,88 @@
+@NAN = external constant double
+@NEG_INF = external constant double
+@INF = external constant double
+@F64_EPS = external constant double
+@F64_MIN = external constant double
+@F64_MAX = external constant double
+@I32_MIN = external constant i32
+@I32_MAX = external constant i32
+@SEED = external global i32
+@LN10 = external constant double
+@LN2 = external constant double
+@SQRT2 = external constant double
+@PHI = external constant double
+@E = external constant double
+@TAU = external constant double
+@PI = external constant double
+define void @screen_int(i32 %x) {
+entry:
+  call i32 (i8*, ...) @printf(i8* getelementptr ([4 x i8], [4 x i8]* @.fmt_int, i32 0, i32 0),
+    i32 %x)
+  call i32 @fflush(i8* null)
+  ret void
+}
+@.fmt_int = private constant [4 x i8] c"%d\0A\00"
+declare i32 @fflush(i8*)
+declare i32 @printf(i8*, ...)
+@t0 = global i32 10
+@t2 = global i32 20
+@t4 = global i32 30
+@t6 = global i32 40
+@t8 = global i32 5
+@t10 = global i32 15
+@t12 = global double 3.14
+@t14 = global double 2.71
+@t16 = global double 1.41
+@t18 = global i1 0
+@t23 = global i1 0
+@t28 = global i1 0
+define void @main() { 
+entry:
+
+%t20 = load i32, ptr @t0
+%t21 = load i32, ptr @t2
+%t22 = icmp eq i32 %t20, %t21
+store i1 %t22, ptr @t18
+%t25 = load i32, ptr @t2
+%t26 = load i32, ptr @t4
+%t27 = icmp sgt i32 %t25, %t26
+store i1 %t27, ptr @t23
+%t30 = load i32, ptr @t4
+%t31 = load i32, ptr @t6
+%t32 = icmp slt i32 %t30, %t31
+store i1 %t32, ptr @t28
+%t33 = load i32, ptr @t0
+%t34 = load i32, ptr @t2
+%t35 = icmp eq i32 %t33, %t34
+%t36 = zext i1 %t35 to i32
+%t37 = add i32 %t36, 1
+call void @screen_int(i32 %t37)
+%t38 = load i32, ptr @t0
+%t39 = load i32, ptr @t2
+%t41 = load i32, ptr @t2
+%t42 = load i32, ptr @t4
+%t40 = icmp sgt i32 %t38, %t39
+%t43 = icmp slt i32 %t41, %t42
+%t44 = zext i1 %t40 to i32
+%t45 = zext i1 %t43 to i32
+%t46 = add i32 %t44, %t45
+call void @screen_int(i32 %t46)
+%t47 = load i32, ptr @t4
+%t48 = load i32, ptr @t6
+%t50 = load i32, ptr @t0
+%t51 = load i32, ptr @t8
+%t49 = icmp slt i32 %t47, %t48
+%t52 = icmp sgt i32 %t50, %t51
+%t53 = zext i1 %t49 to i32
+%t54 = zext i1 %t52 to i32
+%t55 = add i32 %t53, %t54
+call void @screen_int(i32 %t55)
+%t56 = load i32, ptr @t0
+%t57 = load i32, ptr @t2
+%t58 = icmp eq i32 %t56, %t57
+%t59 = xor i1 %t58, true
+%t60 = zext i1 %t59 to i32
+%t61 = add i32 %t60, 3
+call void @screen_int(i32 %t61)
+ret void 
+}

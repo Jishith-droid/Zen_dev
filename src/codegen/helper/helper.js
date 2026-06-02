@@ -9,6 +9,9 @@ export class IRBuilder {
     this.currentFunction = null;
     this.functions = new Map();
     
+    this.returnCount = 0;
+    this.returnTypes = [];
+    
     this.errors = [];
     this.hadError = false;
     
@@ -1163,6 +1166,10 @@ end:
         return `${baseType} ${node.value ? 1 : 0}`;
       }
       
+      if (zenType === "double") {
+        return `${baseType} ${this.formatDouble(node.value)}`;
+      }
+      
       if (zenType === "string") {
         const gep = this.getGlobalStringPtr(node.value);
         return `i8* ${gep}`;
@@ -2208,8 +2215,16 @@ end:
           "declare void @zen_list_pop(ptr, ptr)"
         );
         
-        
         const llvmType = this.getListElementLLVM(object.generic);
+        
+        const type = this.getDeepestGeneric(object.generic)
+        
+        const unwrapGeneric = (g) => {
+          if (!g || g.type !== "List") return null;
+          return g.generic;
+        }
+        
+        const isList = llvmType === "ptr";
         
         const out = this.newTemp();
         this.emit(`${out} = alloca ${llvmType}`);
@@ -2221,7 +2236,17 @@ end:
         const val = this.newTemp();
         this.emit(`${val} = load ${llvmType}, ptr ${out}`);
         
-        return { ptr: val, type: object?.generic?.generic.type, llvmType, local: [], global: [] };
+        const nextGeneric = unwrapGeneric(object.generic);
+        
+        return {
+          ptr: val,
+          type,
+          llvmType,
+          local: [],
+          global: [],
+          isList: nextGeneric?.type === "List",
+          generic: nextGeneric
+        };
       }
       
       case "removeAt": {
@@ -2422,45 +2447,45 @@ end:
     return node;
   }
   
-normalizeUpdateToExpr(update, loopVarName) {
+  normalizeUpdateToExpr(update, loopVarName) {
     
     // 1. i++ / i--
     if (update.type === "UNARY_EXPRESSION") {
-        const op = update.operator === "++" ? "+" : "-";
-        return {
-            type: "ASSIGNMENT",
-            name: update.argument.name,
-            operator: "=",
-            value: {
-                type: "BINARY_EXPRESSION",
-                left: {
-                    type: "variable",
-                    name: update.argument.name
-                },
-                operator: op,
-                right: {
-                    type: "int",
-                    value: 1
-                }
-            }
-        };
+      const op = update.operator === "++" ? "+" : "-";
+      return {
+        type: "ASSIGNMENT",
+        name: update.argument.name,
+        operator: "=",
+        value: {
+          type: "BINARY_EXPRESSION",
+          left: {
+            type: "variable",
+            name: update.argument.name
+          },
+          operator: op,
+          right: {
+            type: "int",
+            value: 1
+          }
+        }
+      };
     }
     
     // 2. i += 3, i -= 3, etc — normalize compound to plain assignment
     if (update.type === "ASSIGNMENT" && update.operator) {
-        if (COMPOUND_OPERATORS.includes(update.operator)) {
-            return this.normalizeCompound(update);
-        }
-        // plain i = expr — already an assignment, pass through
-        return update;
+      if (COMPOUND_OPERATORS.includes(update.operator)) {
+        return this.normalizeCompound(update);
+      }
+      // plain i = expr — already an assignment, pass through
+      return update;
     }
     
     this.IRB.emitError(
-        "SyntaxError",
-        `Invalid update expression in loop`,
-        update
+      "SyntaxError",
+      `Invalid update expression in loop`,
+      update
     );
-}
+  }
   
   getDeepestGeneric(generic) {
     let cur = generic;

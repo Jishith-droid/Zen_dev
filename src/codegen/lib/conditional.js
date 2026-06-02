@@ -5,7 +5,7 @@ export class Conditional {
     this.block = block;
   }
   
-  conditional(node) {
+  conditional(node, meta) {
     
     this.IRB.guardStackOp("IF", node);
     
@@ -48,7 +48,7 @@ export class Conditional {
       // ===== true block =====
       this.IRB.emit(`${trueLabel}:`);
       
-      this.block.block(body, false);
+      this.block.block(body, false, meta);
       
       this.IRB.emit(`br label %${endLabel}`);
     }

@@ -6,7 +6,90 @@ export class HandleFunction {
     this.infer = infer;
   }
   
-  handleReturn(node, meta) {
+  collectReturns(node) {
+    if (!node) return;
+    
+    switch (node.type) {
+      
+      case "RETURN": {
+        if (!node.value) {
+          this.IRB.currentFunction.returnTypes.push("void");
+        } else {
+          const type = this.infer.infer(node.value);
+          this.IRB.currentFunction.returnTypes.push(type);
+        }
+        return;
+      }
+      
+      case "BLOCK":
+        for (const stmt of node.body) {
+          this.collectReturns(stmt);
+        }
+        return;
+        
+      case "CONDITIONAL":
+        this.collectReturns(node.if?.body);
+        
+        for (const elif of node.elseIf || []) {
+          this.collectReturns(elif.body);
+        }
+        
+        if (node.else) {
+          this.collectReturns(node.else.body);
+        }
+        return;
+        
+      default:
+        // fallback deep scan (safe for nested expressions/statements)
+        for (const key in node) {
+          const child = node[key];
+          if (typeof child === "object") {
+            this.collectReturns(child);
+          }
+        }
+    }
+  }
+  
+  hasGuaranteedReturn(node) {
+    if (!node) return false;
+    
+    switch (node.type) {
+      
+      case "RETURN":
+        return true;
+        
+      case "BLOCK":
+        for (const stmt of node.body) {
+          if (this.hasGuaranteedReturn(stmt)) {
+            return true;
+          }
+        }
+        return false;
+        
+      case "CONDITIONAL": {
+        
+        if (!node.else) return false;
+        
+        const ifRet =
+          this.hasGuaranteedReturn(node.if.body);
+        
+        const elifRet =
+          (node.elseIf || []).every(
+            e => this.hasGuaranteedReturn(e.body)
+          );
+        
+        const elseRet =
+          this.hasGuaranteedReturn(node.else.body);
+        
+        return ifRet && elifRet && elseRet;
+      }
+      
+      default:
+        return false;
+    }
+  }
+  
+  handleReturn(node) {
     
     if (this.IRB.currentFunction === null) {
       this.IRB.emitError("SemanticError", "return outside function", node);
@@ -17,35 +100,47 @@ export class HandleFunction {
       return;
     }
     
-    const name = this.IRB.currentFunction.name;
+    const currentFunction = this.IRB.currentFunction;
+    const name = currentFunction.name;
+    const first = this.IRB.currentFunction.returnTypes[0];
     
-    // ensure meta data passed from handleFunction is valid and its return type need inference 
-    if (meta && meta.isAuto) {
+    if (this.IRB.currentFunction.returnType === "auto") {
       
-      const retType = this.infer.infer(node.value);
+      const totalReturns = currentFunction.returnTypes.length;
       
-      if (retType === "List") {
-        this.IRB.emitError("SemanticError", `function '${name}' not allowed return inference`, node);
+      const isSameType = currentFunction.returnTypes.every(type => type === first)
+      
+      if (!isSameType) {
+        
+        const bad = currentFunction.returnTypes.find(t => t !== first);
+        
+        this.IRB.emitError(
+          "TypeError",
+          `deduced conflicting return types for 'auto': '${first}' vs '${bad}'`,
+          node
+        );
       }
+      
+      const retType = first;
       
       const fn = this.IRB.getFunction(name);
       
       // update return type
+      console.log(fn)
+      fn.returnType = {}
+      fn.returnType.type = retType;
       
-      fn.returnType = retType;
-      
-      this.IRB.currentFunction.returnType = retType; 
+      this.IRB.currentFunction.returnType = retType;
       
       if (node.value.type === "CALL") {
         const fn = this.IRB.getFunction(node.value.name);
         
-        fn.returnType = retType;
+        fn.returnType.type = retType;
       }
       const llvmReturnType = this.IRB.getLLVMType(retType);
       
-      
-      this.IRB.currentFunction.body.unshift(meta.local.join("\n"));
-      this.IRB.currentFunction.body.unshift(`define ${llvmReturnType} @${meta.name} ${meta.ir} { \n entry:`);
+      this.IRB.currentFunction.body.unshift(this.IRB.currentFunction.local.join("\n"));
+      this.IRB.currentFunction.body.unshift(`define ${llvmReturnType} @${this.IRB.currentFunction.name} ${this.IRB.currentFunction.paramsIr} { \n entry:`);
     }
     
     const funcType = this.IRB.currentFunction.returnType;
@@ -71,19 +166,19 @@ export class HandleFunction {
       if (!this.IRB.currentFunction.isList) {
         this.IRB.emitError("TypeError", `function ${name} expected ${funcType} but got ${expr.type}`, node);
       }
-        
-        if (expr?.fromParam || expr?.isListLiteral) {
-          // param already holds list pointer
-          this.IRB.emit(`ret ptr ${expr.ptr}`);
-        } 
-        else {
-          // local variable (stack slot) needs load
-          const t = this.IRB.newTemp();
-          this.IRB.emit(`${t} = load ptr, ptr ${expr.ptr}`);
-          this.IRB.emit(`ret ptr ${t}`);
-        }
-        
-        return;
+      
+      if (expr?.fromParam || expr?.isListLiteral) {
+        // param already holds list pointer
+        this.IRB.emit(`ret ptr ${expr.ptr}`);
+      }
+      else {
+        // local variable (stack slot) needs load
+        const t = this.IRB.newTemp();
+        this.IRB.emit(`${t} = load ptr, ptr ${expr.ptr}`);
+        this.IRB.emit(`ret ptr ${t}`);
+      }
+      
+      return;
     }
     
     if (expr.isMap) {
@@ -115,6 +210,7 @@ export class HandleFunction {
     }
     
     this.IRB.emit(`ret ${expr.llvmType} ${expr.ptr}`);
+    
   }
   
   handleFunction(node) {
@@ -147,6 +243,17 @@ export class HandleFunction {
       "void" :
       node.returnType.type; // exclude auto infer for now
     
+    if (
+      returnType !== "void" &&
+      !this.hasGuaranteedReturn(node.body)
+    ) {
+      this.IRB.emitError(
+        "SemanticError",
+        `not all code paths return a value`,
+        node
+      );
+    }
+    
     let llvmReturnType = returnType === "void" ?
       "void" : returnType === "List" ? "%ZenList*" : returnType === "Map" ? "ptr" :
       this.IRB.getLLVMType(returnType); // exclude auto for now
@@ -161,13 +268,17 @@ export class HandleFunction {
       isList: returnType === "List",
       returnType, // temporarily store return type even its auto
       hasReturn: false,
-      isAsync: node.isAsync
+      isAsync: node.isAsync,
+      returnTypes: [],
+      paramsIr: ir,
+      local
     };
     
     this.IRB.enterScope();
     
     // do not make function signature if it's auto
     if (returnType !== "auto") {
+      
       this.IRB.emit(`define ${llvmReturnType} @${name} ${ir} {`);
       this.IRB.emit("entry:");
     }
@@ -214,12 +325,22 @@ export class HandleFunction {
           fromParam: true,
           needsLoad: false
         }));
+      } else if (p?.isMethod) {
+        // update symbol table
+        this.IRB.setVar(p.name, this.IRB.createData({
+          ptr: p.name,
+          llvmType: p.llvmType,
+          type: p.type,
+          isConstant: false,
+          isGlobal: false,
+          fromParam: true
+        }));
       } else if (p.isRest) {
-
+        
         this.IRB.declareOneTime(
-        "ZenList",
-        "%ZenList = type { ptr, i32, i32, i64 }"
-      );
+          "ZenList",
+          "%ZenList = type { ptr, i32, i32, i64 }"
+        );
         // update symbol table
         this.IRB.setVar(p.name, this.IRB.createData({
           ptr: p.ptr,
@@ -271,19 +392,20 @@ export class HandleFunction {
       }
     }
     
-    // meta data for infering return type at handleReturn site
-    const meta = {
-      name,
-      ir,
-      isAuto: returnType === "auto",
-      local
+    if (returnType === "auto") {
+      this.collectReturns(node.body)
+    }
+    
+    if (returnType === "auto" && this.IRB.currentFunction.returnTypes.length === 0) {
+      this.IRB.emit(`define void @${name} ${ir} {`);
+      this.IRB.emit("entry:");
     }
     
     if (returnType !== "auto") {
       this.IRB.emit(local.join("\n"))
     }
     
-    this.block.block(node.body, false, meta); // pass meta data in block
+    this.block.block(node.body, false);
     
     if (!this.IRB.currentFunction.hasReturn) {
       if (returnType === "int") {
