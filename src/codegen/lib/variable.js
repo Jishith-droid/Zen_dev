@@ -147,7 +147,7 @@
       
       
       const expression = node?.expression;
-      const name = expression.name;
+      let name = expression.name;
       
       const isUnary = expression.value?.type === "UNARY_EXPRESSION";
       
@@ -209,6 +209,52 @@
         
         this.IRB.emitExpr(valExpr);
         
+        // MAP WRITE a[key] = value
+        
+        if (varInfo.isMap) {
+          
+          this.IRB.declareOneTime(
+            "zen_map_set",
+            "declare void @zen_map_set(ptr, ptr, ptr)"
+          );
+          
+          // base map pointer
+          let mapPtr = varInfo.ptr;
+          
+          if (varInfo.needsLoad) {
+            const tmp = this.IRB.newTemp();
+            this.IRB.emit(`${tmp} = load ptr, ptr ${mapPtr}`);
+            mapPtr = tmp;
+          }
+          
+          // key expression ( must come from expression tree)
+          const keyExpr = this.expr.handleExpression(expression.index);
+          this.IRB.emitExpr(keyExpr);
+          
+          const valExpr = this.expr.handleExpression(expression.value);
+          this.IRB.emitExpr(valExpr);
+          
+          // type check
+          const layout = varInfo.layout;
+          
+          if (layout && keyExpr.rawStr && layout[keyExpr.rawStr]) {
+            const expected = layout[keyExpr.rawStr].type;
+            if (expected !== valExpr.type) {
+              this.IRB.emitError(
+                "TypeError",
+                `Map '${base.name}' expected ${expected} but got ${valExpr.type}`,
+                node
+              );
+            }
+          }
+          
+          this.IRB.emit(
+            `call void @zen_map_set(ptr ${mapPtr}, ptr ${keyExpr.ptr}, ptr ${valExpr.ptr})`
+          );
+          
+          return;
+        }
+      
         if (varInfo.isList) {
           const generic = this.IRB.getDeepestGeneric(varInfo.generic);
           if (generic !== valExpr.type) {
@@ -235,6 +281,17 @@
       
       if (isUnary && (expression.operator === "++" || expression.operator === "--")) {
         return this.handleUnary(expression.value, true);
+      }
+      
+      const getBaseName = (node) => {
+        while (node?.type === "MEMBER_ACCESS") {
+          node = node.object;
+        }
+        return node?.name;
+      };
+      
+      if (expression.type === "MEMBER_ACCESS") {
+        name = getBaseName(expression);
       }
       
       const orgData = this.IRB.getVar(name, node);
@@ -295,13 +352,13 @@
       }
       
       if (orgData.isList) {
-      if (orgData.isList !== expr.isList) {
-        this.IRB.emitError(
-          "TypeError",
-          `variable '${name}' expected ${orgData.isList ? "List" : "non-List"} but got ${expr.isList ? "List" : expr.type}`,
-          node
-        );
-      }
+        if (orgData.isList !== expr.isList) {
+          this.IRB.emitError(
+            "TypeError",
+            `variable '${name}' expected ${orgData.isList ? "List" : "non-List"} but got ${expr.isList ? "List" : expr.type}`,
+            node
+          );
+        }
       }
       
       this.IRB.emitExpr(expr);

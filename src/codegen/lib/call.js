@@ -77,7 +77,16 @@ export class Call {
     
     const hasRest = fn.params.some(p => p.isRest);
     
-    const finalArgs = node.args;
+    const finalArgs = [...node.args];
+    
+    for (let i = finalArgs.length; i < fn.params.length; i++) {
+      
+      const param = fn.params[i];
+      
+      if (param.default) {
+        finalArgs.push(param.default);
+      }
+    }
     
     const args = [];
     let global = [];

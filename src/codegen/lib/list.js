@@ -46,6 +46,38 @@ export class ZenList {
       8 :
       this.IRB.sizeOf(deepestType);
     
+    const validateDepth = (el, generic) => {
+      console.log(generic)
+      const expectsList = generic.type === "List";
+      const isListLiteral =
+        el.type === "ARRAY" ||
+        el.type === "LIST_LITERAL";
+      
+      // expected list but got primitive
+      if (expectsList && !isListLiteral) {
+        this.IRB.emitError(
+          "TypeError",
+          `List ${name} expects nested list elements`,
+          el
+        );
+      }
+      
+      // expected primitive but got list
+      if (!expectsList && isListLiteral) {
+        this.IRB.emitError(
+          "TypeError",
+          `List ${name} expects '${generic.type}' but got List`,
+          el
+        );
+      }
+      
+      if (isListLiteral) {
+        for (const child of el.elements) {
+          validateDepth(child, generic.generic);
+        }
+      }
+    };
+    
     // PTR
     
     const ptr = globalScope ?
@@ -101,7 +133,7 @@ export class ZenList {
         // PUSH CHILD ELEMENTS
         
         for (const child of element.elements) {
-          
+      
           pushRecursive(
             childList,
             child,
@@ -245,7 +277,7 @@ export class ZenList {
         // Unpack UNARY_EXPRESSION for the type check
         let actualType = el.type;
         if (el.type === "UNARY_EXPRESSION" && el.operator === "-") {
-
+          
           actualType = el.argument.type;
         }
         
@@ -276,6 +308,7 @@ export class ZenList {
         
         for (const el of node.value.elements) {
           
+          validateDepth(el, node.generic.generic);
           validate(el, type);
           
           pushRecursive(

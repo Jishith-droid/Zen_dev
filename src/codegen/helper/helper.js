@@ -413,7 +413,8 @@ export class IRBuilder {
     layout,
     needsLoad,
     name,
-    fromLoopOf
+    fromLoopOf,
+    rawStr
   }) {
     return {
       ptr,
@@ -438,7 +439,8 @@ export class IRBuilder {
       layout,
       needsLoad,
       name,
-      fromLoopOf
+      fromLoopOf,
+      rawStr
     };
   }
   
@@ -522,7 +524,7 @@ export class IRBuilder {
     if (arrMatch) {
       const len = parseInt(arrMatch[1]);
       const elemType = arrMatch[2];
-      return len * this.getTypeSize(elemType);
+      return len * this.getTypeSizeStruct(elemType);
     }
     
     // struct (IMPORTANT FIX)

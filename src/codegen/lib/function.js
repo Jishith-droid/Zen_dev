@@ -156,7 +156,7 @@ export class HandleFunction {
     
     this.IRB.emitExpr(expr);
     
-    if (expr.llvmType.startsWith("[")) {
+    if (expr.llvmType?.startsWith("[")) {
       this.IRB.emitError(
         "SemanticError",
         `function ${name} cannot return array`, node)

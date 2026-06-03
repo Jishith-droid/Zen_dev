@@ -1414,6 +1414,7 @@ export class Parser {
   
   parseUnary() {
     if (
+      this.match("PLUS") ||
       this.match("MINUS") ||
       this.match("BANG") ||
       this.match("PLUS_PLUS") ||
@@ -1661,7 +1662,7 @@ export class Parser {
       );
     }
     
-    if (this.match("LBRACKET") && this.tokens[this.pos - 1].type !== "IDENTIFIER") {
+    if (this.match("LBRACKET") && this.tokens[this.pos - 1]?.type !== "IDENTIFIER") {
       return this.parseArrayLiteral();
     }
     

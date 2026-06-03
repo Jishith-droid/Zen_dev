@@ -125,7 +125,8 @@ export class Expression {
         layout: data.layout,
         needsLoad,
         name: data?.name,
-        fromLoopOf
+        fromLoopOf,
+        rawStr: data?.rawStr
       };
     }
     
@@ -540,13 +541,13 @@ export class Expression {
               
               return { local: [], global: [] }
               
-          /*  default:
-              this.IRB.emitError(
-                "ReferenceError",
-                `Unknown map method '${field}'`,
-                node
-              );
-              */
+              /*  default:
+                  this.IRB.emitError(
+                    "ReferenceError",
+                    `Unknown map method '${field}'`,
+                    node
+                  );
+                  */
           }
           
           if (!currentLayout[field] && field !== "free") {
@@ -735,7 +736,7 @@ export class Expression {
       if (isList) {
         
         const o =
-         object// this.handleExpression(node.object);
+          object // this.handleExpression(node.object);
         
         this.IRB.emitExpr(o);
         
@@ -830,6 +831,16 @@ export class Expression {
           local.push(...base.local);
         }
         
+        if (
+          n.index.type === "UNARY_EXPRESSION" &&
+          n.index.operator === "-"
+        ) {
+          this.IRB.emitError(
+            "IndexError",
+            "negative index is not allowed",
+            n.index
+          );
+        }
         const index = this.handleExpression(n.index);
         
         this.IRB.emitExpr(index);
@@ -912,6 +923,7 @@ export class Expression {
         // MAP ACCESS — a[key]
         
         if (base.isMap) {
+          
           const mapLayout = base.layout;
           const typeSet = new Set();
           let genericType;
@@ -966,6 +978,25 @@ export class Expression {
           // primitive type only
           let finalType = meta?.type || genericType;
           
+          if (finalType === undefined || finalType === null) {
+
+  const hasLayout = base?.layout && Object.keys(base.layout).length > 0;
+
+  if (!hasLayout) {
+    this.IRB.emitError(
+      "TypeError",
+      `Dynamic map access not allowed: key '${index.rawStr ?? "unknown"}' has no schema. Define map layout like Map a = {key: type}.`,
+      node
+    );
+  } else {
+    this.IRB.emitError(
+      "TypeError",
+      `Invalid map key access: '${index.rawStr ?? "unknown"}' is not defined in map layout of '${base.name}'.`,
+      node
+    );
+  }
+}
+          
           const isList = meta?.isList || false;
           
           const elementType = meta?.elementType || null;
@@ -988,6 +1019,7 @@ export class Expression {
             isArray: false,
             needsLoad: false
           };
+          
         }
         
         // string index access
@@ -1134,7 +1166,7 @@ export class Expression {
       if (node.operator === "-") {
         
         if (val.type === "int") {
-      
+          
           return {
             ptr: `-${v}`,
             type: "int",
@@ -1162,6 +1194,21 @@ export class Expression {
         }
         
         this.IRB.emitError("TypeError", `Cannot apply - to ${val.type}`, node);
+      }
+      
+      // + 
+      
+      if (node.operator === "+") {
+        return {
+          ptr: v,
+          type: val.type,
+          llvmType: val.llvmType,
+          local: [],
+          global: [],
+          endLabel: null,
+          postOrPrefix: false,
+          isVarRef: false
+        }
       }
       
       //  Increment or Decrement postfix 

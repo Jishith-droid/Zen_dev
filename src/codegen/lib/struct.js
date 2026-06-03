@@ -361,6 +361,39 @@ export class Struct {
     
     const value = this.expr.handleExpression(node.value);
     
+    const fieldMeta = structInfo.layout[fieldIndex];
+    
+    const expected = fieldMeta?.type;
+    const expectedIsList = fieldMeta?.isList;
+    const fieldName = fieldMeta?.name;
+    
+    // fixed array field
+    if (fieldMeta.llvmType?.startsWith("[")) {
+      this.IRB.emitError(
+        "SemanticError",
+        `struct field '${structName}.${fieldName}' is a fixed-size array and cannot be assigned using an array literal; assign elements individually using index assignment`,
+        node
+      );
+    }
+    
+    // list mismatch
+    if (expectedIsList !== !!value?.isList) {
+      this.IRB.emitError(
+        "TypeError",
+        `cannot assign ${value?.isList ? "List" : value.type} to struct field '${structName}.${fieldName}' of type ${expectedIsList ? "List" : expected}`,
+        node
+      );
+    }
+    
+    // normal type mismatch
+    if (!expectedIsList && expected !== value.type) {
+      this.IRB.emitError(
+        "TypeError",
+        `cannot assign value of type '${value.type}' to struct field '${structName}.${fieldName}' of type '${expected}'`,
+        node
+      );
+    }
+    
     this.IRB.emitExpr(value);
     
     const rhs = value;
