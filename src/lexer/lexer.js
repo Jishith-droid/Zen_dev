@@ -123,6 +123,15 @@ export class Lexer {
             column
           );
           
+        } else if (word === "reactive") {
+          
+          this.addTokenAt(
+            TokenTypes.REACTIVE,
+            word,
+            line,
+            column
+          );
+          
         } else {
           
           this.addTokenAt(
@@ -135,8 +144,8 @@ export class Lexer {
         
         continue;
       }
-    
-     // synmbols
+      
+      // synmbols
       
       if (this.currentChar === ":") {
         this.addToken(
@@ -232,12 +241,33 @@ export class Lexer {
         continue;
       }
       
+      if (this.currentChar === "`") {
+        
+        const parts = this.templateString();
+        
+        this.addTokenAt(
+          TokenTypes.TEMPLATE_STRING,
+          parts,
+        );
+        
+        continue;
+      }
+      
       // ?
       
       if (this.currentChar === '?') {
         this.addToken(
           TokenTypes.QUESTION,
           "?"
+        );
+        this.advance();
+        continue;
+      }
+      
+      if (this.currentChar === '$') {
+        this.addToken(
+          TokenTypes.DOLLAR,
+          "$"
         );
         this.advance();
         continue;
@@ -472,6 +502,127 @@ export class Lexer {
     }
     
     return result;
+  }
+  
+  templateString() {
+    
+    const parts = [];
+    let text = "";
+    
+    this.advance(); // skip `
+    
+    while (this.currentChar !== null) {
+      
+      // end template
+      
+      if (this.currentChar === "`") {
+        
+        if (text.length > 0) {
+          parts.push(text);
+        }
+        
+        this.advance();
+        
+        return parts;
+      }
+      
+      // ${ ... }
+      
+      if (
+        this.currentChar === "$" &&
+        this.peek() === "{"
+      ) {
+        
+        if (text.length > 0) {
+          parts.push(text);
+          text = "";
+        }
+        
+        this.advance(); // $
+        this.advance(); // {
+        
+        let expr = "";
+        let depth = 1;
+        
+        while (this.currentChar !== null && depth > 0) {
+          
+          if (this.currentChar === "{") {
+            depth++;
+          }
+          
+          else if (this.currentChar === "}") {
+            depth--;
+            
+            if (depth === 0) {
+              break;
+            }
+          }
+          
+          expr += this.currentChar;
+          this.advance();
+        }
+        
+        if (depth !== 0) {
+          this.IRB.emitError(
+            "SyntaxError",
+            "Unterminated template expression",
+            this.lineAndColumn()
+          );
+        }
+        
+        parts.push({
+          type: "EXPR",
+          value: expr.trim()
+        });
+        
+        this.advance(); // skip closing }
+        
+        continue;
+      }
+      
+      // escapes
+      
+      if (this.currentChar === "\\") {
+        
+        this.advance();
+        
+        if (this.currentChar === "n") {
+          text += "\n";
+        }
+        
+        else if (this.currentChar === "t") {
+          text += "\t";
+        }
+        
+        else if (this.currentChar === "r") {
+          text += "\r";
+        }
+        
+        else if (this.currentChar === "\\") {
+          text += "\\";
+        }
+        
+        else if (this.currentChar === "`") {
+          text += "`";
+        }
+        
+        else {
+          text += this.currentChar;
+        }
+        
+        this.advance();
+        continue;
+      }
+      
+      text += this.currentChar;
+      this.advance();
+    }
+    
+    this.IRB.emitError(
+      "SyntaxError",
+      "Unterminated template string",
+      this.lineAndColumn()
+    );
   }
   
 }

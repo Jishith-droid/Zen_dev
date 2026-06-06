@@ -1,0 +1,29 @@
+struct Banking {
+  balance int
+  
+  deposit(int a) {
+if (a <= 0) sys.panic("cannot deposit 0 or negative value")
+  this.balance += a
+}
+
+getBalance() int {
+  return this.balance
+}
+
+withdraw(int a) {
+if (a > this.balance) sys.panic("cannot withdraw more than in balance")
+this.balance -= a
+}
+}
+
+Banking jishith
+
+jishith.balance = 1000 // initial balance 
+
+jishith.deposit(Int(input("Enter deposit amount: ")))
+
+screen(`Balance: ${jishith.getBalance()}`)
+
+jishith.withdraw(Int(input("Enter amount to withdraw")))
+
+screen(`Remaining balance after withdraw: ${jishith.getBalance()}`)

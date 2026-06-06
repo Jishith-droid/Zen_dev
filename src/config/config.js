@@ -63,13 +63,16 @@ const NON_SCALAR_TYPES = ["string"];
 
 // keywords
 
-const KEYWORDS = ["if", "else if", "else", "loop", "break", "continue", "return", "fn", "const", "void", "while", "switch", "case", "default", "import", "export", "from", "struct", "auto", "List", "this", "do", "in", "of", "async", "await", "Map", "auto"];
+const KEYWORDS = ["if", "else if", "else", "loop", "break", "continue", "return", "fn", "const", "void", "while", "switch", "case", "default", "import", "export", "from", "struct", "auto", "List", "this", "do", "in", "of", "async", "await", "Map", "auto", "reactive"];
 
 // lexer tokens
 
 const TokenTypes = {
   IDENTIFIER: "IDENTIFIER",
   ASSIGNMENT: "ASSIGNMENT",
+  REACTIVE: "REACTIVE",
+  DOLLAR: "DOLLAR",
+  TEMPLATE_STRING: "TEMPLATE_STRING",
   OPERATOR: "OPERATOR",
   CONSTANT: "CONSTANT",
   IMPORT: "IMPORT",
@@ -114,7 +117,6 @@ const RESERVED_FUNCTIONS = [
   "toString",
   "toInt",
   "length",
-  "color",
   // BASIC
   "isEven", "isOdd", "isPositive", "isNegative",
   "abs", "max", "min", "clamp", "sign",
@@ -164,7 +166,6 @@ const BUILTIN_FUNCTIONS = [
   "toString",
   "toInt",
   "length",
-  "color",
     // BASIC
   "isEven", "isOdd", "isPositive", "isNegative",
   "abs", "max", "min", "clamp", "sign",
@@ -201,6 +202,8 @@ const BUILTIN_FUNCTIONS = [
   "_sys_exec",
   "_sys_panic",
   "_sys_getEnv",
+  "_sys_color",
+  "_sys_performance",
   
   // FS
   "_fs_cwd",
@@ -240,6 +243,7 @@ const BUILTIN_FUNCTIONS = [
   "_time_month",
   "_time_day",
   "_time_year",
+  "_time_sleep",
   
   // HTTP
   "_http_get",
@@ -286,9 +290,7 @@ const STD_FUNCTIONS = [
   "match", "json"
 ];
 
-// input() must be assigned to a variable.
-
-const NON_STANDALONE_BUILTINS = ["input"];
+const NON_STANDALONE_BUILTINS = [];
 
 const VOID_BUILTIN_FUNCTIONS = ["screen", "panic", "sleep"];
 
@@ -326,7 +328,9 @@ const NAMESPACE_MAP = {
   sys: [
     "exec",
     "panic",
-    "getEnv"
+    "getEnv",
+    "color",
+    "performance"
   ],
   
   time: [
@@ -410,11 +414,6 @@ const BUILTIN_MAP = {
     llvmName: "length"
   },
   
-  color: {
-    returnType: "void",
-    llvmName: "color"
-  },
-  
   // ========================================
   // SYS
   // ========================================
@@ -422,6 +421,11 @@ const BUILTIN_MAP = {
   panic: {
     returnType: "void",
     llvmName: "_sys_panic"
+  },
+  
+  color: {
+    returnType: "void",
+    llvmName: "_sys_color"
   },
   
   exec: {
@@ -432,6 +436,11 @@ const BUILTIN_MAP = {
   getEnv: {
     returnType: "string",
     llvmName: "_sys_getEnv"
+  },
+  
+  performance: {
+    returnType: "double",
+    llvmName: "_sys_performance"
   },
   
   // ========================================
@@ -671,22 +680,6 @@ const fcmpMap = {
 };
 
 const FORMAT_MAP = {
-  int: {
-    fmt: "@.scan_int",
-    fmtType: "[3 x i8]",
-    varType: "i32",
-    decl: "scan_int",
-    ir: '@.scan_int = private constant [3 x i8] c"%d\\00"',
-    zero: "0"
-  },
-  double: {
-    fmt: "@.scan_double",
-    fmtType: "[4 x i8]",
-    varType: "double",
-    decl: "scan_double",
-    ir: '@.scan_double = private constant [4 x i8] c"%lf\\00"',
-    zero: "0.0"
-  },
   string: {
     fmt: "@.scan_string",
     fmtType: "[6 x i8]",
@@ -1065,11 +1058,18 @@ const SYS_MAP = {
     ["string"]
   ],
   
-  color: [
-    "zen_color",
+  _sys_color: [
+    "_sys_color",
     "void",
     1,
     ["string"]
+  ],
+  
+  _sys_performance: [
+    "_sys_performance",
+    "double",
+    0,
+    []
   ],
   
 };

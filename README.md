@@ -51,6 +51,93 @@ The language is designed from the compiler's perspective first. Ease of implemen
 
 ---
 
+## Reactive Variables
+
+Zen introduces a first-class language feature called **reactive variables** — variables that automatically recompute their value whenever a referenced variable changes.
+
+### Syntax
+
+```zen
+reactive <type> <identifier> = <expression>
+```
+
+```zen
+int b = 20
+reactive int a = b + 10   # a is 30
+
+b = 50                     # a automatically becomes 60
+```
+
+---
+
+### How It Works
+
+A `reactive` variable holds a **live binding** to its defining expression. Rather than capturing the value at the time of declaration, it captures the expression itself. Any time a variable referenced in that expression is reassigned, the reactive variable recomputes.
+
+```zen
+int x = 5
+int y = 10
+reactive int sum = x + y   # sum is 15
+
+x = 20                      # sum is now 30
+y = 2                       # sum is now 22
+```
+
+---
+
+### Rules and Constraints
+
+**Only variable reassignment triggers recomputation.**
+A reactive variable updates only when a referenced variable is reassigned via `=`. Mutations that do not go through reassignment do not trigger an update.
+
+**`const` variables do not trigger updates.**
+Since `const` variables cannot be reassigned, a reactive expression that references only `const` values behaves as a regular variable — it is computed once at declaration and never again.
+
+```zen
+const int base = 100
+reactive int val = base + 50   # val is 150 — never updates, base is const
+```
+
+**Reactive variables work on variable references only.**
+The expression must reference named variables. Expressions that reference only literals are legal but pointless — they will never recompute.
+
+```zen
+reactive int x = 5 + 3   # always 8 — no variable to trigger recomputation
+```
+
+**A reactive variable cannot be manually reassigned.**
+Once declared as `reactive`, its value is exclusively owned by its expression. Direct reassignment is a compile-time error.
+
+```zen
+reactive int a = b + 10
+
+a = 99   # compile-time error: cannot manually assign to a reactive variable
+```
+
+**Reactive variables can reference other reactive variables.**
+A chain of reactive dependencies is fully supported. Updates propagate through the chain in declaration order.
+
+```zen
+int base = 10
+reactive int doubled = base * 2     # 20
+reactive int final   = doubled + 5  # 25
+
+base = 20   # doubled → 40, final → 45
+```
+
+---
+
+### Summary
+
+| Property | Behavior |
+|---|---|
+| Trigger | Reassignment of a referenced variable |
+| `const` references | No trigger — computed once |
+| Manual reassignment | Compile-time error |
+| Chained reactives | Supported — propagates in order |
+| Expression type | Variable references only |
+
+
 ## Scope of This Specification
 
 Version 1.0.0 defines the **stable core** of the language:
@@ -208,6 +295,51 @@ A sequence of characters enclosed in matching double or single quotes. Both form
 "hello, world"
 'hello, world'
 ```
+
+---
+
+**Backtick Strings**
+
+Zen also supports backtick-delimited strings — `` ` `` — which offer two additional capabilities over quoted strings.
+
+**Multiline strings**
+
+Backtick strings preserve newlines and indentation exactly as written in source. No escape sequences are needed.
+
+```zen
+string msg = `hello
+hi
+how are you`
+```
+
+**Template literals**
+
+Backtick strings support inline expression interpolation using `${}`. Any valid Zen expression can appear inside the braces.
+
+```zen
+string name = "Zen"
+string msg  = `Hello, ${name}!`           # "Hello, Zen!"
+
+int a = 10
+int b = 20
+string result = `Sum of ${a} and ${b} is ${a + b}`   # "Sum of 10 and 20 is 30"
+```
+
+Multiline and interpolation can be combined freely.
+
+```zen
+string user = "Achu"
+string out  = `Welcome, ${user}.
+Your session has started.`
+```
+
+---
+
+| Form | Multiline | Interpolation |
+|---|---|---|
+| `"..."` | No | No |
+| `'...'` | No | No |
+| `` `...` `` | Yes | Yes |
 
 #### 2.6.4 Boolean Literals
 
@@ -618,13 +750,30 @@ ternary_expr
   = expression "?" expression ":" expression
 ```
 
-Nesting is allowed. The condition must evaluate to `bool`.
+The condition must evaluate to `bool`. Both branches **must return the same type** — a type mismatch between the true and false branches is a compile-time error.
 
 ```zen
-int max = a > b ? a : b
+int max     = a > b ? a : b
 string label = active ? "on" : "off"
-int val = a > 0 ? (a > 10 ? 2 : 1) : 0
+int val     = a > 0 ? (a > 10 ? 2 : 1) : 0
 ```
+
+Nesting is allowed. Each nested ternary must also satisfy the same-type constraint at every level.
+
+---
+
+**Type Mismatch — Compile-time Error**
+
+```zen
+# Error: branches return different types (int vs string)
+auto x = a > b ? 42 : "hello"
+
+# Error: branches return different types (bool vs int)
+auto y = flag ? true : 0
+```
+
+Both the true branch and the false branch must resolve to the **same static type**. Zen performs this check at compile time — no implicit coercion is applied.
+
 
 #### Access Expressions
 
@@ -1424,14 +1573,86 @@ fn describe(string label, int value) string {
 
 ---
 
-### 6.2 Parameters
+## 6.2 Parameters
 
-Parameters are declared as `type identifier` pairs separated by commas.
+Parameters are declared as **type-identifier pairs**, separated by commas. Zen is strictly typed — every parameter must carry an explicit type annotation.
+
+### Primitive Parameters
 
 ```zen
 fn multiply(int a, int b) int {
   return a * b
 }
+```
+
+Supported primitive parameter types include `int`, `float`, `bool`, and `string`.
+
+---
+
+### List Parameters
+
+List parameters use the generic syntax `List<T>` and support any level of nesting.
+
+```zen
+fn sum(List<int> nums) int { ... }
+
+fn process(List<string> names) void { ... }
+
+fn matrix(List<List<float>> grid) void { ... }
+
+fn deep(List<List<List<int>>> cube) void { ... }
+```
+
+---
+
+### Map Parameters
+
+Map parameters are declared using the `Map` type. Note that Map parameters **do not support default values**.
+
+```zen
+fn display(Map info) void { ... }
+
+fn merge(Map source, Map target) void { ... }
+```
+
+---
+
+### Default Parameters
+
+Zen supports default values for **primitive** and **List** parameters. If a caller omits an argument, the default value is used.
+
+**Primitive defaults:**
+
+```zen
+fn greet(string name = "World") void {
+  print("Hello, " + name)
+}
+
+fn power(int base, int exp = 2) int {
+  return base ^ exp
+}
+```
+
+**List defaults:**
+
+```zen
+fn process(List<int> nums = [10, 20]) void {
+  ...
+}
+
+fn configure(List<string> flags = ["verbose", "safe"]) void {
+  ...
+}
+```
+
+**Map parameters do not support defaults.** A `Map` argument must always be explicitly passed by the caller.
+
+```zen
+// Valid
+fn display(Map info) void { ... }
+
+// Invalid — not supported in Zen
+fn display(Map info = {}) void { ... }
 ```
 
 #### Rest Parameters
@@ -1469,7 +1690,7 @@ fn collect(int values...) auto {       # compile-time error: auto invalid for Li
 The `return` keyword exits the current function and optionally passes a value back to the caller.
 
 ```zen
-return                                 # valid in void functions
+return          # valid in void functions
 return 42
 return a + b
 return "done"
@@ -1478,6 +1699,51 @@ return "done"
 - `return` is only valid inside a function block.
 - A `void` function may use a bare `return` to exit early.
 - The returned expression must match the declared return type.
+
+---
+
+**Exhaustive Return Required**
+
+For non-`void` functions, Zen requires a **guaranteed return path**. Every possible execution path through the function must end in a `return` statement. This is enforced at compile time.
+
+A `return` that only exists inside a conditional or loop does **not** satisfy this requirement — the compiler cannot guarantee it will be reached.
+
+```zen
+# Error: return is conditional — not all paths return a value
+fn add(int a, int b) int {
+  if a > 20 {
+    return 20
+  }
+  # missing return — compile-time error
+}
+
+# Error: return is inside a loop — not guaranteed to execute
+fn find(List<int> nums) int {
+  loop (int n in nums) {
+    return n
+  }
+  # missing return — compile-time error
+}
+```
+
+```zen
+# Valid: all paths return a value
+fn add(int a, int b) int {
+  if a > 20 {
+    return 20
+  }
+  return a + b
+}
+
+# Valid: unconditional return at end
+fn clamp(int val) int {
+  if val < 0  { return 0   }
+  if val > 100 { return 100 }
+  return val
+}
+```
+
+`void` functions are exempt — they may return early with a bare `return` or simply fall off the end of the block.
 
 ---
 
@@ -2084,28 +2350,63 @@ screen(3.14, "%.2f")
 
 #### `input`
 
-Reads a value from standard input. The return type matches the type of the variable it is assigned to.
+Reads a line from standard input and returns it as a `string`. The caller is responsible for casting to the required type using Zen's built-in casting functions.
 
 ```
-input(prompt?)
+input(prompt?) → string
 ```
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `prompt` | `string` | No | Text to display before reading input |
 
-Returns the value in the type of the assigned variable.
+---
+
+**Basic Usage**
 
 ```zen
-int age = input()
-int age = input("Enter age: ")
 string name = input("Enter name: ")
+string raw  = input()
 ```
 
-`input` must be used as the right-hand side of a variable declaration or assignment. It is not valid as a standalone statement.
+`input()` always returns a `string` — even if the user types a number.
 
 ```zen
-input()           # compile-time error: input cannot be used standalone
+string age = input("Enter age: ")   # user types 23 → age is "23"
+```
+
+---
+
+**Type Casting**
+
+To work with the input as a specific type, use Zen's built-in casting functions:
+
+```zen
+int age      = Int(input("Enter age: "))
+float price  = Double(input("Enter price: "))
+bool confirm = Bool(input("Enter true/false: "))
+```
+
+---
+
+**Flexible Usage**
+
+Unlike many languages, `input()` in Zen is a first-class expression. It can be used anywhere a `string` value is valid — inline in expressions, as a function argument, or as a standalone statement.
+
+```zen
+# Standalone
+input()
+
+# Inline expression
+screen("Hello, " + input("Name: "))
+
+# As function argument
+process(input("Enter value: "))
+
+# In condition (after cast)
+if Int(input("Enter number: ")) > 100 {
+  screen("Large number")
+}
 ```
 
 ---
@@ -2153,30 +2454,6 @@ int len = length([1, 2, 3])         # 3
 List<int> nums = [10, 20, 30]
 int len = length(nums)              # 3
 ```
-
----
-
-#### `color`
-
-Changes the terminal output color using ANSI formatting. Affects all subsequent `screen` output until changed again.
-
-```
-color(name)
-```
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | Yes | ANSI color name e.g. `"red"`, `"green"`, `"reset"` |
-
-Returns `void`.
-
-```zen
-color("red")
-screen("error occurred")
-color("reset")
-screen("back to normal")
-```
-
 ---
 
 #### Type Conversion Functions
@@ -2323,6 +2600,29 @@ Returns `void`.
 if (x < 0) {
   sys.panic("negative value not allowed")
 }
+```
+
+---
+
+##### `sys.color`
+
+Changes the terminal output color using ANSI formatting. Affects all subsequent `screen` output until changed again.
+
+```
+sys.color("color")
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `name` | `string` | Yes | ANSI color name e.g. `"red"`, `"green"`, `"reset"` |
+
+Returns `void`.
+
+```zen
+color("red")
+screen("error occurred")
+color("reset")
+screen("back to normal")
 ```
 
 ---
@@ -3399,9 +3699,88 @@ string r = extName("data.txt")   # ".txt"
 ```
 match(s, pattern) → bool
 ```
-Returns `true` if `s` matches the given pattern string.
+Returns `true` if `s` fully matches the given pattern string. The **entire string must match** — partial matches return `false`.
+
 ```zen
-bool r = match("hello@zen.dev", "@")   # true
+bool r = match("hello@zen.dev", "@")   # false — partial match
+bool r = match("hello@zen.dev", "*@*") # true  — wildcard full match
+```
+
+---
+
+**Pattern Reference**
+
+Zen's `match()` uses its own lightweight pattern syntax — not traditional regex. Below is the complete reference.
+
+| Pattern | Name | Description |
+|---|---|---|
+| `"text"` | Literal | Matches exact string content character by character |
+| `?` | Any Char | Matches exactly one character of any kind |
+| `*` | Wildcard | Matches zero or more characters of any kind |
+| `#d` | Digit | Matches a single numeric character `0–9` |
+| `#a` | Letter | Matches a single alphabet character `a–z`, `A–Z` |
+| `#x` | Alphanumeric | Matches one letter or digit |
+| `#s` | Space | Matches one whitespace character (space or tab) |
+| `(pattern?)` | Optional Group | Makes the inner pattern match 0 or 1 time |
+| `a(+)` | One or More | Repeats the previous token at least once |
+| `a(*)` | Zero or More | Repeats the previous token zero or more times |
+| `a\|b\|c` | OR | Matches any one of the pipe-separated alternatives |
+| `[a,b,c]` | Character Set | Matches one character from the comma-separated list |
+| `[a-z]` | Character Range | Matches one character within the defined range |
+| `:int` | Integer Token | Matches a full signed or unsigned integer |
+| `:id` | Identifier Token | Matches a valid variable/function name (letter or `_` start) |
+| `:string` | String Token | Matches any non-empty sequence of characters |
+
+---
+
+**Examples**
+
+```zen
+# Literals and wildcards
+bool a = match("hello", "hello")       # true
+bool b = match("hello123", "h*3")      # true
+
+# Special tokens
+bool c = match("5", "#d")             # true  — digit
+bool d = match("Z", "#a")             # true  — letter
+bool e = match("A", "#x")             # true  — alphanumeric
+bool f = match(" ", "#s")             # true  — space
+
+# Optional group
+bool g = match("color",  "colou?r")   # true
+bool h = match("colour", "colou?r")   # true
+
+# Repetition
+bool i = match("aaa", "a(+)")         # true  — one or more
+bool j = match("",    "a(*)")         # true  — zero or more
+
+# OR
+bool k = match("maybe", "yes|no|maybe")  # true
+bool l = match("nope",  "yes|no|maybe")  # false
+
+# Character set and range
+bool m = match("c", "[a,b,c]")        # true
+bool n = match("7", "[0-9]")          # true
+bool o = match("M", "[a-z]")          # false
+
+# Typed tokens
+bool p = match("12345",   ":int")     # true
+bool q = match("-99",     ":int")     # true
+bool r = match("12345a",  ":int")     # false — trailing char
+bool s = match("zen_var1", ":id")     # true
+bool t = match("1abc",     ":id")     # false — starts with digit
+bool u = match("hello world", ":string") # true
+```
+
+---
+
+**Notes**
+
+- `match()` always checks the **full string**. Partial matches return `false` — `"12345a"` does not match `":int"`.
+- OR (`|`) is evaluated **left to right**. First match wins.
+- Character range `[lo-hi]` requires exactly 3 characters inside brackets with a dash in the middle — e.g. `[a-z]`, `[0-9]`.
+- `:id` must start with a **letter or underscore**. A leading digit or symbol returns `false`.
+- `:int` allows a **leading minus sign**. The remainder must be digits only with no trailing characters.
 ```
 
 ---
@@ -3557,25 +3936,47 @@ ZEN errors are divided into two categories: **compile-time errors**, caught befo
 
 ### 13.1 Error Format
 
+All Zen errors follow a consistent structured format:
+
 ```
 [Zen  ErrorType]
   ├── message
-  ├── at: filename.zen:line:column
-  └── stack trace:
-        fn functionName (filename.zen:line)
+  ├── at: filename.zen:line:col
+  └── hint: optional suggestion
 ```
 
-- **ErrorType** — the category of error (see sections below)
-- **message** — a human-readable description of what went wrong
-- **location** — file name, line number, and column number when available
-- **stack trace** — the call site where the error occurred, not a full trace. Only the relevant frame is shown in v1.0.0. Full stack traces are planned for v2.
+| Field | Description |
+|---|---|
+| `ErrorType` | The category of error (see sections below) |
+| `message` | A human-readable description of what went wrong |
+| `at` | File name, line number, and column offset — included for all compile-time errors |
+| `hint` | An optional suggestion to help resolve the error, shown when applicable |
+
+---
+
+**Compile-time errors** always include the `at` field pinpointing the exact location of the fault.
+
+```
+[Zen  TypeError]
+  ├── Cannot assign 'string' to variable of type 'int'
+  └── at: main.zen:5:10
+```
+
+**Runtime errors** omit location information — the program has already left the static analysis stage.
+
+```
+[Zen  IndexError]
+  └── Index 5 is out of bounds for List of length 3 — valid range is 0 to 2
+```
+
+> **Note:** Stack traces are not included in Zen v1. A full call stack trace is planned for v2.
 
 ```
 [Zen  ArgumentError]
   ├── Function time.sleep accepts exactly 1 argument(s), got 0
   ├── at: main.zen:12:3
   └── stack trace:
-        fn main (main.zen:12)
+        test (main.zen:12)
 ```
 
 ---
@@ -3586,21 +3987,100 @@ Compile-time errors are raised by the compiler during lexing, parsing, or code g
 
 ---
 
-#### TypeError
+## Error Reference
 
-Raised when a value is used in a context that does not match its declared type.
+Zen reports errors in a consistent structured format. Compile-time errors include the source location. Runtime errors include only the error message — location information is not available at runtime.
+
+**Compile-time format:**
+```
+[Zen  <ErrorType>]
+  ├── <message>
+  └── at: <file>:<line>:<col>
+```
+
+**Runtime format:**
+```
+[Zen  <ErrorType>]
+  └── <message>
+```
+
+---
+
+## Compile-Time Errors
+
+Compile-time errors are caught before execution. The program will not run until all compile-time errors are resolved.
+
+---
+
+#### SyntaxError
+
+Raised when source text does not conform to Zen's grammar.
 
 ```
-[Zen  TypeError]
-  ├── Cannot assign string to int
-  ├── at: main.zen:5:10
+[Zen  SyntaxError]
+  ├── Unexpected token '}' — expected expression
+  └── at: main.zen:20:1
+```
+
+```
+[Zen  SyntaxError]
+  ├── Unterminated string literal — expected closing '"'
+  └── at: main.zen:8:5
+```
+
+```
+[Zen  SyntaxError]
+  ├── Expected '(' after 'fn' in function declaration
+  └── at: main.zen:15:4
 ```
 
 Common triggers:
-- Assigning a value of the wrong type to a variable
+- Mismatched or missing brackets, braces, or parentheses
+- Unterminated string literals
+- Malformed function, loop, or conditional declarations
+
+---
+
+#### TypeError
+
+Raised when a value is used in a context that does not match its declared or expected type.
+
+```
+[Zen  TypeError]
+  ├── Cannot assign 'string' to variable of type 'int'
+  └── at: main.zen:5:10
+```
+
+```
+[Zen  TypeError]
+  ├── Argument 1 of 'process' expects 'int', got 'bool'
+  └── at: main.zen:12:14
+```
+
+```
+[Zen  TypeError]
+  ├── Condition must be of type 'bool', got 'int'
+  └── at: main.zen:9:7
+```
+
+```
+[Zen  TypeError]
+  ├── Ternary branches must return the same type — got 'int' and 'string'
+  └── at: main.zen:17:5
+```
+
+```
+[Zen  TypeError]
+  ├── 'switch' condition must be of type 'int', got 'float'
+  └── at: main.zen:22:10
+```
+
+Common triggers:
+- Assigning a value of the wrong type to a typed variable
 - Passing an argument of the wrong type to a function
-- Using a non-`bool` expression as a condition
-- Using a non-`int` expression in a `switch`
+- Using a non-`bool` expression as a condition in `if`, `while`, or `do-while`
+- Using a non-`int` expression as a `switch` condition
+- Ternary branches resolving to different types
 
 ---
 
@@ -3610,85 +4090,127 @@ Raised when a function is called with the wrong number of arguments.
 
 ```
 [Zen  ArgumentError]
-  ├── Function screen accepts 1 to 2 argument(s), got 0
-  ├── at: main.zen:8:3
+  ├── 'screen' accepts 1 to 2 argument(s), got 0
+  └── at: main.zen:8:3
 ```
+
+```
+[Zen  ArgumentError]
+  ├── 'multiply' accepts exactly 2 argument(s), got 5
+  └── at: main.zen:31:5
+```
+
+Common triggers:
+- Calling a function with fewer arguments than required parameters
+- Calling a function with more arguments than it declares
+- Omitting a required argument when default parameters are partially defined
 
 ---
 
 #### DeclarationError
 
-Raised when a variable or function is declared incorrectly.
+Raised when a variable or function is declared incorrectly or violates a declaration rule.
 
 ```
 [Zen  DeclarationError]
-  ├── Identifier 'fn' is a reserved keyword
-  ├── at: main.zen:3:5
+  ├── 'fn' is a reserved keyword and cannot be used as an identifier
+  └── at: main.zen:3:5
+```
+
+```
+[Zen  DeclarationError]
+  ├── Nested function declarations are not allowed in Zen
+  └── at: main.zen:10:3
+```
+
+```
+[Zen  DeclarationError]
+  ├── Variable 'x' must have an explicit type or use 'auto'
+  └── at: main.zen:6:1
+```
+
+```
+[Zen  DeclarationError]
+  ├── 'List<auto>' is not a valid type — element type must be explicit
+  └── at: main.zen:4:8
+```
+
+```
+[Zen  DeclarationError]
+  ├── Cannot manually assign to reactive variable 'total'
+  └── at: main.zen:18:3
 ```
 
 Common triggers:
 - Using a reserved keyword as an identifier
 - Declaring a function inside another function
-- Declaring a variable with no type and no `auto` keyword
+- Declaring a variable with no type annotation and no `auto` keyword
 - Using `List<auto>` as a type
+- Manually reassigning a `reactive` variable
 
 ---
 
 #### ConstError
 
-Raised when a constant variable is reassigned.
+Raised when a `const` variable is reassigned after declaration.
 
 ```
 [Zen  ConstError]
-  ├── Cannot reassign constant 'MAX'
-  ├── at: main.zen:14:3
-```
-
----
-
-#### ExportError
-
-Raised when an export rule is violated.
-
-```
-[Zen  ExportError]
-  ├── Cannot export 'b' — expression values require a stack frame
-  ├── at: utils.zen:6:1
+  ├── Cannot reassign constant 'MAX' — declared as 'const' on line 2
+  └── at: main.zen:14:3
 ```
 
 Common triggers:
-- Exporting a variable whose value is a runtime expression
-- Declaring more than one `export` statement in a file
-- Using `import` in a file that also uses `export`
+- Assigning a new value to a `const` variable anywhere after its declaration
+- Using a `const` variable as a loop counter or accumulator
 
 ---
 
-#### ImportError
+#### SemanticError
 
-Raised when an import cannot be resolved.
+Raised when code is syntactically valid but violates a language rule that cannot be caught by grammar alone.
 
 ```
-[Zen  ImportError]
-  ├── 'multiply' is not exported by 'utils.zen'
-  ├── at: main.zen:1:1
+[Zen  SemanticError]
+  ├── 'return' used outside of a function body
+  └── at: main.zen:3:1
+```
+
+```
+[Zen  SemanticError]
+  ├── 'break' used outside of a loop or switch block
+  └── at: main.zen:25:5
+```
+
+```
+[Zen  SemanticError]
+  ├── 'continue' used outside of a loop block
+  └── at: main.zen:19:5
+```
+
+```
+[Zen  SemanticError]
+  ├── Function 'add' does not return a value on all code paths
+  └── at: main.zen:7:1
+```
+
+```
+[Zen  SemanticError]
+  ├── Undefined variable 'count' — used before declaration
+  └── at: main.zen:11:9
+```
+
+```
+[Zen  SemanticError]
+  ├── Undefined function 'compute' — no declaration found in scope
+  └── at: main.zen:44:3
 ```
 
 Common triggers:
-- Importing a name that does not exist in the target file's export list
-- Importing a file that does not exist
-- Placing an `import` statement after other declarations
-
----
-
-#### SyntaxError
-
-Raised when source text does not conform to the grammar.
-
-```
-[Zen  SyntaxError]
-  ├── Unexpected token '}' — expected expression
-  ├── at: main.zen:20:1
-```
+- Using `return`, `break`, or `continue` outside their valid contexts
+- Referencing a variable or function that has not been declared
+- A non-`void` function that does not return a value on all execution paths
+- Using a variable before it has been assigned a value
 
 ---
 
@@ -3698,77 +4220,216 @@ Raised when a fixed-size array declaration is invalid.
 
 ```
 [Zen  ArrayError]
-  ├── Array size must be greater than 0
-  ├── at: main.zen:7:3
+  ├── Array size must be a positive integer greater than 0
+  └── at: main.zen:7:3
+```
+
+```
+[Zen  ArrayError]
+  ├── Partial initializer not allowed — array of size 4 requires exactly 4 elements
+  └── at: main.zen:9:5
+```
+
+```
+[Zen  ArrayError]
+  ├── Negative index -1 is not allowed — array indices must be non-negative integers
+  └── at: main.zen:12:6
 ```
 
 Common triggers:
-- Declaring an array with size `0`
-- Providing a partial initializer for a non-empty array literal
+- Declaring an array with size `0` or a negative size
+- Providing an initializer list that does not exactly match the declared array size
+- Using a negative literal as an array index
 
 ---
 
-### 13.3 Runtime Errors
+#### ExportError
 
-Runtime errors are raised during program execution. They terminate the program immediately and print the error with location and stack trace information where available.
-
----
-
-#### MemoryError
-
-Raised when a heap object is accessed after being freed.
+Raised when an export rule is violated.
 
 ```
-[Zen  MemoryError]
-  ├── Use after free — 'nums' has been freed
-  ├── at: main.zen:18:3
-  └── stack trace:
-        fn process (main.zen:18)
+[Zen  ExportError]
+  ├── Cannot export 'b' — only compile-time constant values can be exported
+  └── at: utils.zen:6:1
+```
+
+```
+[Zen  ExportError]
+  ├── A file may only contain one 'export' statement
+  └── at: utils.zen:12:1
+```
+
+```
+[Zen  ExportError]
+  ├── A file cannot use both 'import' and 'export'
+  └── at: utils.zen:1:1
 ```
 
 Common triggers:
-- Accessing a `List` or `Map` after calling `.free()`
-- Accessing a freed inner list of a nested `List<List<T>>`
+- Exporting a variable whose value is a runtime expression
+- Declaring more than one `export` statement in a file
+- Using both `import` and `export` in the same file
+
+---
+
+#### ImportError
+
+Raised when an import cannot be resolved or violates an import rule.
+
+```
+[Zen  ImportError]
+  ├── 'multiply' is not exported by 'utils.zen'
+  └── at: main.zen:1:1
+```
+
+```
+[Zen  ImportError]
+  ├── Cannot resolve module 'helpers.zen' — file not found
+  └── at: main.zen:1:1
+```
+
+```
+[Zen  ImportError]
+  ├── 'import' must appear before all other declarations
+  └── at: main.zen:10:1
+```
+
+Common triggers:
+- Importing a name that does not exist in the target file's export list
+- Importing a file that does not exist on disk
+- Placing an `import` statement after other declarations in the file
+
+---
+
+```markdown
+#### ReferenceError
+
+Raised when a variable, function, struct, field, or map key is referenced but has not been defined.
+
+```
+[Zen  ReferenceError]
+  ├── Function 'compute' is not defined
+  └── at: main.zen:44:3
+```
+
+```
+[Zen  ReferenceError]
+  ├── Struct 'Player' is not defined
+  └── at: main.zen:12:5
+```
+
+```
+[Zen  ReferenceError]
+  ├── Field 'salary' does not exist in struct 'Employee'
+  └── at: main.zen:27:8
+```
+
+```
+[Zen  ReferenceError]
+  ├── Key 'email' is not defined in Map 'user'
+  └── at: main.zen:33:10
+```
+
+```
+[Zen  ReferenceError]
+  ├── Method 'calculate' is not defined
+  └── at: main.zen:19:6
+```
+
+Common triggers:
+- Calling a function that has not been declared
+- Accessing a struct that has not been defined
+- Accessing a field that does not exist in a struct
+- Accessing a key that does not exist in a map layout
+- Calling a method that does not exist on a type
+```
+
+---
+
+## Runtime Errors
+
+Runtime errors are raised during program execution and cannot always be anticipated at compile time. They terminate the program immediately.
 
 ---
 
 #### IndexError
 
-Raised when an array or list is accessed with an out-of-bounds index.
+Raised when a `List` or fixed-size array is accessed with an index that is out of bounds at runtime.
 
 ```
 [Zen  IndexError]
-  ├── Index 5 out of bounds for List of length 3
-  ├── at: main.zen:22:10
-  └── stack trace:
-        fn main (main.zen:22)
+  └── Index 5 is out of bounds for List of length 3 — valid range is 0 to 2
 ```
+
+```
+[Zen  IndexError]
+  └── Index 12 is out of bounds for array of length 5 — valid range is 0 to 4
+```
+
+Common triggers:
+- Accessing a list or array element at an index greater than or equal to its length
+- Off-by-one errors when iterating near the end of a collection
 
 ---
 
-#### PanicError
+#### MemoryError
 
-Raised explicitly by `sys.panic()`.
+Raised when a heap object is accessed after it has been freed.
 
 ```
-[Zen  PanicError]
-  ├── negative value not allowed
-  ├── at: main.zen:10:3
-  └── stack trace:
-        fn validate (main.zen:10)
+[Zen  MemoryError]
+  └── Use after free — 'nums' has been freed and is no longer accessible
 ```
+
+```
+[Zen  MemoryError]
+  └── Use after free — inner list at index 2 of 'matrix' has been freed
+```
+
+Common triggers:
+- Accessing a `List` or `Map` after calling `.free()` on it
+- Accessing a freed inner list within a nested `List<List<T>>`
+- Retaining a reference to a freed object across function calls
 
 ---
 
 #### LoopError
 
-Raised when a `loop in` is used on a Map with heterogeneous or nested values.
+Raised when a `loop in` iterates over a `Map` whose value types cannot be resolved uniformly at runtime.
 
 ```
 [Zen  LoopError]
-  ├── Cannot iterate — Map 'data' contains heterogeneous value types
-  ├── at: main.zen:30:3
+  └── Cannot iterate — Map 'data' contains heterogeneous value types
 ```
+
+```
+[Zen  LoopError]
+  └── Cannot iterate — Map 'config' contains nested values incompatible with 'loop in'
+```
+
+Common triggers:
+- Using `loop in` on a `Map` that holds values of mixed types
+- Using `loop in` on a `Map` with nested or complex value structures
+
+---
+
+#### PanicError
+
+Raised explicitly by the program via `sys.panic()`. Signals an unrecoverable state defined by the developer.
+
+```
+[Zen  PanicError]
+  └── negative value not allowed
+```
+
+```
+[Zen  PanicError]
+  └── unreachable code path reached in 'resolve'
+```
+
+Common triggers:
+- Explicit `sys.panic("message")` call to abort on an invalid program state
+- Defensive assertions that should never be reached in correct programs
 
 ---
 
@@ -3831,7 +4492,7 @@ The following names are reserved as built-in functions, standard library functio
 
 #### Core Functions
 
-`screen` `input` `type` `Int` `Double` `Bool` `String` `toString` `toInt` `length` `color`
+`screen` `input` `type` `Int` `Double` `Bool` `String` `toString` `toInt` `length`
 
 #### Standard Functions
 
@@ -3841,11 +4502,7 @@ The following names are reserved as built-in functions, standard library functio
 
 `os` `fs` `sys` `time` `http` `net`
 
-
-
 ---
-
-
 
 ### C. Operator Precedence
 
@@ -3864,11 +4521,7 @@ Operators are listed from highest to lowest precedence. Operators on the same ro
 | 9 | `? :` | Ternary |
 | 10 (lowest) | `=` `+=` `-=` `*=` `/=` `%=` | Assignment |
 
-
-
 ---
-
-
 
 ### D. Type Default Values
 
@@ -3883,12 +4536,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | `List<T>` | `[]` |
 | `Map` | `{}` |
 
-
-
 ---
-
-
-
 
 ### E. Type Conversion Reference
 
@@ -3906,12 +4554,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | `int` | `bool` | `Bool(x)` — `0` → `false`, non-zero → `true` |
 | `string` | `bool` | `Bool(x)` — `"true"` → `true`, `"false"` → `false` |
 
-
-
 ---
-
-
-
 
 ### F. Implicit Type Behavior
 
@@ -3921,12 +4564,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | `string` + any type via `+` | Other operand coerced to `string`; result is `string` |
 | Any other cross-type expression | Compile-time `TypeError` |
 
-
-
 ---
-
-
-
 
 ### G. Data Structure Constraints Summary
 
@@ -3937,12 +4575,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | Fixed Array | No | No | Yes | Yes | No |
 | `struct` | No | No | Yes | Yes | No |
 
-
-
 ---
-
-
-
 
 ### H. Module Rules Summary
 
@@ -3957,12 +4590,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | Exact name match | Imported names must match the export list |
 | `.zen` extension | Import paths must reference `.zen` files |
 
-
-
-
 ---
-
-
 
 ### I. Compilation Pipeline Summary
 
@@ -3973,15 +4601,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | Code Generator | AST | `.ll` LLVM IR |
 | Clang (`-O2`) | `.ll` LLVM IR | Native binary |
 
-
-
-
 ---
-
-
-
-
-
 
 ### J. Error Type Reference
 
@@ -3989,6 +4609,7 @@ When a variable is declared without an initializer, it is lowered to its type's 
 |---|---|---|
 | `TypeError` | Compile-time | Type mismatch in assignment or expression |
 | `ArgumentError` | Compile-time | Wrong number of arguments to a function |
+| `ReferenceError` | Compile-time | Variable, function, struct, field, or map key referenced before definition |
 | `DeclarationError` | Compile-time | Invalid identifier or declaration |
 | `ConstError` | Compile-time | Reassignment of a constant |
 | `ExportError` | Compile-time | Invalid export — expression value or duplicate export |
@@ -3999,4 +4620,3 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | `IndexError` | Runtime | Out-of-bounds array or list access |
 | `PanicError` | Runtime | Explicit `sys.panic()` call |
 | `LoopError` | Runtime | `loop in` on heterogeneous or nested Map |
-

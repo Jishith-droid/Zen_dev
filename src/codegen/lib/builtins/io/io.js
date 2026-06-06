@@ -62,7 +62,7 @@ export class IO {
       type = "string";
     }
     
-     if (expr?.isStruct) {
+    if (expr?.isStruct) {
       s = `struct<${expr.type}>`;
       type = "string"
     }
@@ -101,183 +101,53 @@ export class IO {
   
   input(node, globalScope) {
     
-    const name = node.name;
-    const arg = node.value?.args;
-    const isVarDecl = node.type === "VARIABLE_DECLARATION";
-    const dataType = node.dataType;
-    
     this.IRB.declareOneTime(
-      "scanf",
-      "declare i32 @scanf(i8*, ...)"
+      "sys_input",
+      "declare ptr @sys_input(ptr)"
     );
     
-    // -------------------------
-    // argument validation
-    // -------------------------
-    if (arg?.length > 0) { // optional arg check
+    const args = node?.value?.args || node?.args;
+    
+    const ptr = this.IRB.newTemp();
+    
+    let promptPtr = "null";
+    
+    if (args.length !== 0) {
       
-      if (arg.length > 1) {
+      if (args.length > 1) {
         this.IRB.emitError(
           "ArgumentError",
-          "input takes exactly 1 parameter", node
+          `input() expects 0 or 1 argument, but got ${args.length}`,
+          node
         );
       }
       
-      const argType = arg[0].type;
+      const expr = this.expr.handleExpression(args[0]);
+      const displayType = expr?.isList ? "List" : expr.type;
       
-      this.screen(node.value);
-    }
-    
-    const info = FORMAT_MAP[dataType];
-    
-    if (!info) {
-      this.IRB.emitError(
-        "TypeError",
-        `input() unsupported type ${dataType}`, node
-      );
-    }
-    
-    const { varType, decl, ir, fmt, fmtType } = info;
-    
-    this.IRB.declareOneTime(decl, ir);
-    
-    let ptr;
-    const temp = this.IRB.newTemp();
-    
-    // -------------------------
-    // LOCAL SCOPE
-    // -------------------------
-    
-    this.IRB.declareOneTime("getchar", "declare i32 @getchar()"); // flush left over \n
-    
-    if (!globalScope) {
-      
-      if (dataType === "string") {
-        
-        if (isVarDecl) {
-          ptr = this.IRB.newTemp();
-        } else {
-          ptr = this.IRB.getVar(name).ptr;
-        }
-        
-        this.IRB.emit(`${temp} = alloca [256 x i8]`);
-        
-        if (isVarDecl) {
-          this.IRB.emit(`${ptr} = alloca i8*`);
-        }
-        
-        const t = this.IRB.newTemp();
-        
-        this.IRB.emit(
-          `${t} = getelementptr [256 x i8], [256 x i8]* ${temp}, i32 0, i32 0`
+      if (expr.type !== "string" && expr.isList) {
+        this.IRB.emitError(
+          "TypeError",
+          `input() prompt must be string, got ${displayType}`,
+          args[0]
         );
-        
-        this.IRB.emit(
-          `call i32 (i8*, ...) @scanf(
-          i8* getelementptr (${fmtType}, ${fmtType}* ${fmt}, i32 0, i32 0),
-          i8* ${t}
-        )`
-        );
-        this.IRB.emit("call i32 @getchar()");
-        this.IRB.emit(`store i8* ${t}, i8** ${ptr}`);
-        
-      } else {
-        
-        if (isVarDecl) {
-          ptr = this.IRB.newTemp();
-          this.IRB.emit(`${ptr} = alloca ${varType}`);
-        } else {
-          ptr = this.IRB.getVar(name).ptr;
-        }
-        
-        this.IRB.emit(
-          `call i32 (i8*, ...) @scanf(
-          i8* getelementptr (${fmtType}, ${fmtType}* ${fmt}, i32 0, i32 0),
-          ${varType}* ${ptr}
-        )`
-        );
-        this.IRB.emit("call i32 @getchar()");
-        
       }
+      this.IRB.emitExpr(expr);
       
+      promptPtr = expr.ptr;
     }
     
-    // -------------------------
-    // GLOBAL SCOPE
-    // -------------------------
-    else {
-      
-      if (isVarDecl) {
-        ptr = this.IRB.newGlobalTemp()
-      } else {
-        ptr = this.IRB.getVar(name).ptr;
-      }
-      
-      if (node.dataType === "string") {
-        const temp = this.IRB.newGlobalTemp();
-        
-        if (isVarDecl) {
-          this.IRB.globals.push(`${ptr} = ${node.isConstant ? "constant" : "global"} i8* null`);
-        }
-        
-        this.IRB.globals.push(
-          `${temp} = global [256 x i8] zeroinitializer`
-        );
-        
-        const t = this.IRB.newTemp();
-        
-        this.IRB.emit(
-          `${t} = getelementptr [256 x i8], [256 x i8]* ${temp}, i32 0, i32 0`
-        );
-        
-        this.IRB.emit(
-          `call i32 (i8*, ...) @scanf(
-          i8* getelementptr (${fmtType}, ${fmtType}* ${fmt}, i32 0, i32 0),
-          i8* ${t}
-        )`
-        );
-        this.IRB.emit("call i32 @getchar()");
-        this.IRB.emit(`store i8* ${t}, i8** ${ptr}`);
-        
-      } else {
-        
-        if (isVarDecl) {
-          this.IRB.globals.push(
-            `${ptr} = global ${varType} ${info.zero}`
-          );
-        }
-        
-        this.IRB.emit(
-          `call i32 (i8*, ...) @scanf(
-          i8* getelementptr (${fmtType}, ${fmtType}* ${fmt}, i32 0, i32 0),
-          ${varType}* ${ptr}
-        )`
-        );
-        this.IRB.emit("call i32 @getchar()");
-      }
-    }
-    
-    // -------------------------
-    // SYMBOL TABLE
-    // -------------------------
-    this.IRB.setVar(
-      name,
-      this.IRB.createData({
-        ptr,
-        llvmType: varType,
-        type: node.dataType,
-        isConstant: node.isConstant,
-        isGlobal: globalScope,
-        needsLoad: true
-      })
+    this.IRB.emit(
+      `${ptr} = call ptr @sys_input(ptr ${promptPtr})`
     );
     
     return {
       ptr,
-      type: node.dataType,
-      llvmType: varType,
-      postOrPrefix: false,
-      needsLoad: true
+      type: "string",
+      llvmType: "ptr",
+      needsLoad: false,
+      local: [],
+      global: []
     };
   }
 }

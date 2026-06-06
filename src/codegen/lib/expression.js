@@ -126,8 +126,58 @@ export class Expression {
         needsLoad,
         name: data?.name,
         fromLoopOf,
-        rawStr: data?.rawStr
+        rawStr: data?.rawStr,
+        isReactive: data?.isReactive,
+        isStruct: data?.isStruct
       };
+    }
+    
+    if (node.type === "TEMPLATE_LITERAL") {
+      
+      const normalize = (part) => {
+        
+        if (typeof part === "string") {
+          return {
+            type: "string",
+            value: part
+          };
+        }
+        
+        if (Array.isArray(part)) {
+          part = part[0];
+        }
+        
+        if (
+          part.type === "VARIABLE_REFERENCE"
+        ) {
+          return part.expression;
+        }
+        
+        return part;
+      };
+      
+      let result = null;
+      
+      for (const part of node.parts) {
+        
+        const exprNode = normalize(part);
+        
+        if (!result) {
+          result = exprNode;
+          continue;
+        }
+        
+        result = {
+          type: "BINARY_EXPRESSION",
+          left: result,
+          operator: "+",
+          right: exprNode
+        };
+      }
+      
+      const expr = this.handleExpression(result);
+      
+      return expr;
     }
     
     if (node.type === "ARRAY") {
@@ -514,6 +564,27 @@ export class Expression {
         
         for (let i = 0; i < fields.length; i++) {
           
+          const currentPath = fields.slice(0, i).join(".");
+          const freed = this.IRB.freedMap.get(base.name);
+          
+          // check base itself freed (a.free() then a.something)
+          if (freed?.has("")) {
+            this.IRB.emitError(
+              "MemoryError",
+              `Use after free — '${base.name}' has been freed and is no longer accessible`,
+              node
+            );
+          }
+          
+          // check nested path freed
+          if (freed?.has(currentPath) && currentPath !== "") {
+            this.IRB.emitError(
+              "MemoryError",
+              `Use after free — '${fields[i-1]}' has been freed and is no longer accessible`,
+              node
+            );
+          }
+          
           const field =
             fields[i];
           
@@ -529,25 +600,60 @@ export class Expression {
           }
           
           switch (field) {
-            case 'free':
-              
+            
+            case 'free': {
               this.IRB.declareOneTime("zen_map_free", "declare void @zen_map_free(ptr)");
+              this.IRB.emit(`call void @zen_map_free(ptr ${currentMapPtr})`);
               
-              const t = this.IRB.newTemp();
-              this.IRB.emit(`${t} = load ptr, ptr ${object.ptr}`);
-              this.IRB.emit(`call void @zen_map_free(ptr ${t})`);
+              if (!this.IRB.freedMap.has(base.name)) {
+                this.IRB.freedMap.set(base.name, new Set());
+              }
               
-              this.IRB.freedVars.add(base.name);
+              // a.free() → path is "" (base itself)
+              // a.nested.again.free() → path is "nested.again"
+              const freedPath = fields.slice(0, i).join(".");
+              this.IRB.freedMap.get(base.name).add(freedPath);
               
-              return { local: [], global: [] }
-              
-              /*  default:
-                  this.IRB.emitError(
-                    "ReferenceError",
-                    `Unknown map method '${field}'`,
-                    node
-                  );
-                  */
+              return { ptr: null, type: "void", llvmType: "void", local: [], global: [] }
+            }
+            
+            case 'remove': {
+              this.IRB.declareOneTime("zen_map_remove", "declare void @zen_map_remove(ptr, ptr)");
+              const mapPtr = currentMapPtr;
+              const argNode = node.args?.[0];
+              if (!argNode) {
+                this.IRB.emitError("ArgumentError", `'map.remove' expects exactly 1 argument, got 0`, node);
+              }
+              const keyStr = this.handleExpression(argNode);
+              this.IRB.emit(`call void @zen_map_remove(ptr ${mapPtr}, ptr ${keyStr.ptr})`);
+              return {
+                ptr: null,
+                type: "void",
+                llvmType: "void",
+                local: [],
+                global: []
+              }
+            }
+            
+            case 'has': {
+              this.IRB.declareOneTime("zen_map_has", "declare i1 @zen_map_has(ptr, ptr)");
+              const mapPtr = currentMapPtr;
+              const argNode = node.args?.[0];
+              if (!argNode) {
+                this.IRB.emitError("ArgumentError", `'map.has' expects exactly 1 argument, got 0`, node);
+              }
+              const keyStr = this.handleExpression(argNode);
+              const result = this.IRB.newTemp();
+              this.IRB.emit(`${result} = call i1 @zen_map_has(ptr ${mapPtr}, ptr ${keyStr.ptr})`);
+              return {
+                ptr: result,
+                type: "bool",
+                llvmType: "i1",
+                local: [],
+                global: [],
+                isVarRef: false
+              }
+            }
           }
           
           if (!currentLayout[field] && field !== "free") {
@@ -835,11 +941,7 @@ export class Expression {
           n.index.type === "UNARY_EXPRESSION" &&
           n.index.operator === "-"
         ) {
-          this.IRB.emitError(
-            "IndexError",
-            "negative index is not allowed",
-            n.index
-          );
+          this.IRB.emitError("ArrayError", `Array index must be a non-negative integer`, n.index)
         }
         const index = this.handleExpression(n.index);
         
@@ -939,10 +1041,7 @@ export class Expression {
           }
           
           if (typeSet.size > 1) {
-            this.IRB.emitError(
-              "TypeError",
-              `Map '${base.name}' is not uniform. Loop-in requires single type.`, node
-            );
+            this.IRB.emitError("LoopError", `Cannot iterate — Map '${base.name}' contains heterogeneous value types`, node)
           }
           
           
@@ -979,23 +1078,15 @@ export class Expression {
           let finalType = meta?.type || genericType;
           
           if (finalType === undefined || finalType === null) {
-
-  const hasLayout = base?.layout && Object.keys(base.layout).length > 0;
-
-  if (!hasLayout) {
-    this.IRB.emitError(
-      "TypeError",
-      `Dynamic map access not allowed: key '${index.rawStr ?? "unknown"}' has no schema. Define map layout like Map a = {key: type}.`,
-      node
-    );
-  } else {
-    this.IRB.emitError(
-      "TypeError",
-      `Invalid map key access: '${index.rawStr ?? "unknown"}' is not defined in map layout of '${base.name}'.`,
-      node
-    );
-  }
-}
+            
+            const hasLayout = base?.layout && Object.keys(base.layout).length > 0;
+            
+            if (!hasLayout) {
+              this.IRB.emitError("ReferenceError", `Key '${index.rawStr ?? "unknown"}' does not exist in Map '${base.name}'`, node)
+            } else {
+              this.IRB.emitError("ReferenceError", `Key '${index.rawStr ?? "unknown"}' is not defined in Map '${base.name}'`, node)
+            }
+          }
           
           const isList = meta?.isList || false;
           
@@ -1071,13 +1162,13 @@ export class Expression {
       const isStringCharAccess = final.internalType === "char";
       const isListAccess = final.isList;
       const isDynamicMapAccess = final.isDynamicMapAccess;
-      const finalPtrShape = final.llvmType === "ptr" ? "ptr" : final.llvmType + "*";
       
       if (!isStringCharAccess && !isDynamicMapAccess) {
         local.push(
           
-          `${val} = load ${final.llvmType}, ${finalPtrShape} ${final.addr}`
+          `${val} = load ${final.llvmType}, ptr ${final.addr}`
         );
+        final.needsLoad = false;
       }
       
       return {
@@ -1099,7 +1190,7 @@ export class Expression {
     }
     
     if (node.type === "MAP_LITERAL") {
-      this.IRB.emitError("SemanticError", "Map literals not supported yet", node);
+      this.IRB.emitError("SemanticError", `Map literals are not supported in Zen v1`, node)
     }
     
     if (node.type === "CALL") {
@@ -1221,17 +1312,11 @@ export class Expression {
         
         
         if (!isInt && !isDouble) {
-          this.IRB.emitError(
-            "TypeError",
-            `expected numeric type (int or double), got ${val.type}`, node
-          );
+          this.IRB.emitError("TypeError", `Expected numeric type 'int' or 'float', got '${val.type}'`, node)
         }
         
         if (!val.isVarRef) {
-          this.IRB.emitError(
-            "ReferenceError",
-            "invalid assignment target: expected variable reference", node
-          );
+          this.IRB.emitError("SemanticError", `Invalid assignment target — expected a variable reference`, node)
         }
         
         const llvmType = isDouble ? "double" : "i32";
@@ -1269,6 +1354,8 @@ export class Expression {
     
     const resolve = (n) => {
       
+      if (!n) this.IRB.emitError("InternalError", "resolve node is empty");
+      
       if (
         n.type === "BINARY_EXPRESSION" ||
         n.type === "UNARY_EXPRESSION"
@@ -1298,14 +1385,19 @@ export class Expression {
     
     let lLLVMtype = null;
     let rLLVMtype = null;
+    let lKind = null;
+    let rKind = null;
     
     if (!LOGICAL_OPS.includes(op)) {
       let LNode = resolve(node.left);
       let RNode = resolve(node.right);
       
+      if (!LNode || !RNode) this.IRB.emitError("Invalid binary operation: left or right operand is missing or invalid", node);
+      
       lPtr = LNode.ptr;
       rPtr = RNode.ptr;
-      
+      lKind = LNode?.kind;
+      rKind = RNode?.kind;
       lType = LNode.type;
       rType = RNode.type;
       
@@ -1340,6 +1432,7 @@ export class Expression {
           case 'bool':
           case 'double':
             const cExpr = this.IRB.castExpression(LNode, "string");
+            local.push(cExpr?.local.join("\n"))
             leftPtr = cExpr.ptr;
             break;
             
@@ -1354,6 +1447,7 @@ export class Expression {
           case 'bool':
           case 'double':
             const cExpr = this.IRB.castExpression(RNode, "string");
+            local.push(cExpr?.local.join("\n"))
             rightPtr = cExpr.ptr;
             break;
             
@@ -1456,25 +1550,25 @@ export class Expression {
     
     //  2. NORMALIZE (bool → int)
     
-    const normalize = (type, val) => {
+    const normalize = (type, val, k) => {
       
       if (type === "bool") {
         const t = this.IRB.newTemp();
         local.push(`${t} = zext i1 ${val} to i32`);
-        return { type: "int", llvmType: "i32", value: t };
+        return { type: "int", llvmType: "i32", value: t, kind: k};
       }
       
       if (type === "int") {
-        return { type, llvmType: "i32", value: val };
+        return { type, llvmType: "i32", value: val , kind: k};
       }
       
       if (type === "double") {
-        return { type, llvmType: "double", value: val };
+        return { type, llvmType: "double", value: val, kind: k };
       }
     };
     
-    const L = normalize(lType, lPtr);
-    const R = normalize(rType, rPtr);
+    const L = normalize(lType, lPtr, lKind);
+    const R = normalize(rType, rPtr, rKind);
     
     if (LOGICAL_OPS.includes(op)) {
       

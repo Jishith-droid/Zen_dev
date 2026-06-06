@@ -12,6 +12,11 @@ export class IRBuilder {
     this.returnCount = 0;
     this.returnTypes = [];
     
+    this.reactiveMap = new Map();
+    this.dependents = new Map();
+    
+    this.freedMap = new Map();
+    
     this.errors = [];
     this.hadError = false;
     
@@ -48,9 +53,82 @@ export class IRBuilder {
     this.usedStdlib = new Map();
   }
   
+  hasPath(from, target, visited = new Set()) {
+    
+    if (from === target) {
+      return true;
+    }
+    
+    if (visited.has(from)) {
+      return false;
+    }
+    
+    visited.add(from);
+    
+    const deps = this.dependents.get(from) || [];
+    
+    for (const dep of deps) {
+      if (this.hasPath(dep, target, visited)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  updateReactive(name, visited = new Set()) {
+    
+    if (visited.has(name)) return;
+    visited.add(name);
+    
+    const dependents = this.dependents.get(name) || [];
+    
+    for (const d of dependents) {
+      
+      const reactive = this.reactiveMap.get(d);
+      const ptr = this.getVar(d).ptr;
+      
+      const expr = this.expr.handleExpression(reactive.expr);
+      
+      this.emitExpr(expr);
+      
+      this.emit(
+        `store ${expr.llvmType} ${expr.ptr}, ptr ${ptr}`
+      );
+      
+      // recurse
+      this.updateReactive(d, visited);
+    }
+  }
+  
+  collectVarRefs(node, refs = new Set()) {
+    
+    if (!node || typeof node !== "object") {
+      return [...refs];
+    }
+    
+    if (node.type === "variable") {
+      refs.add(node.name);
+    }
+    
+    for (const value of Object.values(node)) {
+      
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          this.collectVarRefs(item, refs);
+        }
+      } else if (value && typeof value === "object") {
+        this.collectVarRefs(value, refs);
+      }
+      
+    }
+    
+    return [...refs];
+  }
+  
   emitExpr(expr) {
-    if (expr?.local.length) this.emit(expr.local.join("\n"));
-    if (expr?.global.length) this.globals.push(expr.global.join("\n"));
+    if (expr?.local?.length) this.emit(expr.local.join("\n"));
+    if (expr?.global?.length) this.globals.push(expr.global.join("\n"));
   }
   
   enterFunction(name) {
@@ -67,7 +145,7 @@ export class IRBuilder {
   
   setFunction(name, data) {
     if (this.functions.has(name)) {
-      this.emitError("referenceError", `function ${name} is already defined`)
+      this.emitError("DeclarationError", `Function '${name}' is already defined`)
     }
     this.functions.set(name, data);
   }
@@ -76,10 +154,7 @@ export class IRBuilder {
     const globalConstantsSet = new Set(Object.keys(GLOBAL_EXTERNAL));
     
     if (globalConstantsSet.has(name)) {
-      this.emitError(
-        "ReservedGlobalError",
-        `'${name}' is a reserved super global and cannot be redeclared`, node
-      );
+      this.emitError("DeclarationError", `'${name}' is a reserved super global and cannot be redeclared`, node)
     }
   }
   
@@ -148,7 +223,7 @@ export class IRBuilder {
   
   setStruct(name, data) {
     if (this.structTable.has(name)) {
-      this.emitError("referenceError", `struct ${name} is already defined`);
+      this.emitError("DeclarationError", `Struct '${name}' is already defined`, node)
     }
     this.structTable.set(name, data);
   }
@@ -219,11 +294,7 @@ export class IRBuilder {
     }
     
     else {
-      this.emitError(
-        "TypeError",
-        `Cannot access members on type '${current.type}'`,
-        node
-      );
+      this.emitError("TypeError", `Cannot access member on non-struct type '${current.type}'`, node)
     }
     
     return {
@@ -237,7 +308,14 @@ export class IRBuilder {
       return this.functions.get(name);
     }
     
-    this.emitError("ReferenceError", `Function ${name} is not defined`);
+    this.emitError("ReferenceError", `Function '${name}' is not defined`)
+  }
+  
+  typeMatches(expr, expectedType, expectedIsList = false) {
+    return (
+      expr.type === expectedType &&
+      expr.isList === expectedIsList
+    );
   }
   
   getStruct(name) {
@@ -245,7 +323,7 @@ export class IRBuilder {
       return this.structTable.get(name);
     }
     
-    this.emitError("ReferenceError", `struct ${name} is not defined`);
+    this.emitError("ReferenceError", `Struct '${name}' is not defined`)
   }
   
   utf8LenWithNull(str) {
@@ -311,10 +389,7 @@ export class IRBuilder {
   guardStackOp(opName, node) {
     
     if (this.exported && !this.currentFunction) {
-      this.emitError(
-        "ExportScopeViolation",
-        `Stack operation '${opName}' is not allowed in exported module`, node
-      );
+      this.emitError("ExportError", `Stack operation '${opName}' is not allowed in exported module`, node)
     }
   }
   
@@ -352,6 +427,8 @@ export class IRBuilder {
     if (type === "Map" || type === "List") {
       return "ptr";
     }
+    
+    if (type === "void") return "void";
     return LLVM_TYPES_MAP[type];
   }
   
@@ -414,7 +491,8 @@ export class IRBuilder {
     needsLoad,
     name,
     fromLoopOf,
-    rawStr
+    rawStr,
+    isReactive
   }) {
     return {
       ptr,
@@ -440,7 +518,8 @@ export class IRBuilder {
       needsLoad,
       name,
       fromLoopOf,
-      rawStr
+      rawStr,
+      isReactive
     };
   }
   
@@ -459,7 +538,7 @@ export class IRBuilder {
     
     const current = this.symbolTable[this.symbolTable.length - 1];
     if (current.has(name)) {
-      this.emitError("ReferenceError", `variable ${name} is already defined`);
+      this.emitError("DeclarationError", `Variable '${name}' is already defined`, node)
     }
     current.set(name, data);
   }
@@ -472,7 +551,7 @@ export class IRBuilder {
       }
     }
     
-    this.emitError("ReferenceError", `${name} is not defined`, node);
+    this.emitError("ReferenceError", `variable ${name} is not defined`, node);
   }
   
   enterScope() {
@@ -579,7 +658,7 @@ export class IRBuilder {
       this.emit(`${t} = icmp ne i8 ${t0}, 0`);
     }
     else {
-      this.emitError("TypeError", `Cannot convert ${type} to bool`, node);
+      this.emitError("InternalError", `Cannot convert ${type} to bool`, node);
     }
     
     return t;
@@ -707,7 +786,7 @@ export class IRBuilder {
           name: p.name,
           type: p.type.generic.type,
           generic: { generic: p.type.generic },
-          llvmtype: "%ZenList*",
+          llvmType: "%ZenList*",
           isList: true
         });
         
@@ -721,7 +800,7 @@ export class IRBuilder {
           ptr: temp,
           name: p.name,
           type: "ptr",
-          llvmtype: "ptr",
+          llvmType: "ptr",
           isMap: true
         });
         
@@ -734,10 +813,7 @@ export class IRBuilder {
         p.type?.dimensions?.length > 0;
       
       if (isArray) {
-        this.emitError(
-          "SemanticError",
-          "arrays cannot be passed in function parameters", node
-        );
+        this.emitError("TypeError", `Fixed-size arrays cannot be passed as function parameters`, node)
       }
       
       // FLATTEN TYPE → LLVM TYPE
@@ -766,9 +842,11 @@ export class IRBuilder {
       paramStr.unshift(`ptr %this`);
       paramData.push({
         name: "this",
-        type: "ptr",
-        llvmtype: "ptr",
-        isMethod: true
+        ptr: `%this`,
+        type: `${this.currentStruct}`,
+        llvmType: `%${this.currentStruct}*`,
+        isMethod: true,
+        isStruct: true
       })
     }
     
@@ -878,10 +956,7 @@ export class IRBuilder {
     if (!isRest) {
       
       if (params.length !== args.length) {
-        this.emitError(
-          "TypeError",
-          `${fn.name}() → expected ${params.length} arguments but got ${args.length}`, node
-        );
+        this.emitError("ArgumentError", `'${fn.name}' accepts exactly ${params.length} argument(s), got ${args.length}`, node)
       }
       
       for (let i = 0; i < params.length; i++) {
@@ -892,10 +967,7 @@ export class IRBuilder {
         const actualList = args[i]?.isList ? "List" : args[i]?.type;
         
         if (expectedList !== actualList) {
-          this.emitError(
-            "TypeError",
-            `${fn.name}() → expected ${expectedList} but got ${actualList}`, node
-          );
+          this.emitError("TypeError", `Argument type mismatch in '${fn.name}' — expected (${expectedList}), got (${actualList})`, node)
         }
       }
       
@@ -919,10 +991,7 @@ export class IRBuilder {
       const actual = args[i]?.type;
       
       if (actual && expected !== actual) {
-        this.emitError(
-          "TypeError",
-          `${fn.name}() expected ${expected} but got ${actual}`, node
-        );
+        this.emitError("TypeError", `'${fn.name}' expects type '${expected}', got '${actual}'`, node)
       }
     }
     
@@ -935,10 +1004,7 @@ export class IRBuilder {
       const actual = args[i]?.type;
       
       if (actual !== restType) {
-        this.emitError(
-          "TypeError",
-          `${fn.name}() rest expected ${restType} but got ${actual}`, node
-        );
+        this.emitError("TypeError", `'${fn.name}' rest parameter expects type '${restType}', got '${actual}'`, node)
       }
     }
   }
@@ -1070,8 +1136,7 @@ end:
       node.type === "UNARY_EXPRESSION" &&
       (node.operator === "++" || node.operator === "--")
     ) {
-      this.emitError("SyntaxError",
-        "++ and -- are only allowed as assignments or standalone statements", node);
+      this.emitError("SyntaxError", `'++' and '--' are only valid as standalone statements or assignment targets`, node)
     }
     
     return (
@@ -1114,10 +1179,7 @@ end:
       const actualType = res.type;
       
       if (actualType !== expectedZenType) {
-        this.emitError(
-          "TypeError",
-          `Type mismatch in ${name} expected ${expectedZenType}, got ${actualType}`, node
-        );
+        this.emitError("TypeError", `Cannot assign '${actualType}' to variable '${name}' of type '${expectedZenType}'`, node)
       }
       
       
@@ -1126,16 +1188,14 @@ end:
     
     // ---------- ARRAY ----------
     const match = type.match(/^\[(\d+) x (.*)\]$/);
-    if (!match) this.emitError("Syntax Error", "Invalid array type", node);
+    if (!match) this.emitError("SyntaxError", `Invalid array type declaration`, node)
     
     const size = parseInt(match[1]);
     const innerType = match[2];
     // Helper at top of the method (or inline)
     
     if (node.elements.length !== size) {
-      this.emitError("Array size mismatch",
-        `Array size mismatch in ${name} expected ${size}, got ${node.elements.length}`, node
-      );
+      this.emitError("ArrayError", `Array '${name}' declared with size ${size} but got ${node.elements.length} element(s)`, node)
     }
     
     node.elements.forEach((el, i) =>
@@ -1161,7 +1221,7 @@ end:
     if (node.type !== "ARRAY") {
       
       if (node.type !== zenType) {
-        this.emitError("TypeError", "Global array initializer must be constant", node);
+        this.emitError("DeclarationError", `Global array '${name}' initializer must be a compile-time constant`, node)
       }
       
       if (zenType === "bool") {
@@ -1197,7 +1257,7 @@ end:
     if (depth >= dimensions.length) return;
     
     if (node.type !== "ARRAY") {
-      this.emitError("SyntaxError", "Invalid array structure", node);
+      this.emitError("SyntaxError", `Invalid array structure — expected a valid array literal`, node)
     }
     
     const expected =
@@ -1206,9 +1266,7 @@ end:
       this.constEval(dimensions[depth], "Array dimension");
     
     if (node.elements.length !== expected) {
-      this.emitError("Array size mismatch",
-        `Array size mismatch at dimension ${depth}: expected ${expected}, got ${node.elements.length}`, node
-      );
+      this.emitError("ArrayError", `Array size mismatch at dimension ${depth} — expected ${expected} element(s), got ${node.elements.length}`, node)
     }
     
     node.elements.forEach(el =>
@@ -1242,23 +1300,17 @@ end:
         const val = this.constEval(d, "Array dimension");
         
         if (typeof val !== "number") {
-          this.emitError(
-            "TypeError",
-            "Array dimension must be a constant integer expression", node
-          );
+          this.emitError("ArrayError", `Array dimension must be a compile-time constant integer`, node)
         }
         
         return val;
       }
       
-      this.emitError(
-        "TypeError",
-        "Array dimension must be int or constant expression", node
-      );
+      this.emitError("ArrayError", `Array dimension must be a positive integer greater than 0`, node)
     });
     
     if (dims[0] === 0) {
-      this.emitError("SemanticError", "Array dimension cannot be zero", node);
+      this.emitError("ArrayError", `Array size must be a positive integer greater than 0`, node)
     }
     
     const { full: arrayType, base: elementType } =
@@ -1400,6 +1452,7 @@ end:
     if (expr.type === targetType) {
       return expr;
     }
+    let local = [];
     
     const t = this.newTemp(); // ONLY SSA name
     
@@ -1407,12 +1460,13 @@ end:
       if (expr.type === "string" && targetType === "int") {
         this.declareOneTime("string_to_int_ascii", "declare i32 @string_to_int_ascii(i8*)");
         
-        this.emit(`${t} = call i32 @string_to_int_ascii(i8* ${expr.ptr})`);
+        local.push(`${t} = call i32 @string_to_int_ascii(i8* ${expr.ptr})`);
         
         return {
           ptr: t,
           llvmType: "i32",
-          type: "int"
+          type: "int",
+          local
         };
       }
     }
@@ -1420,48 +1474,52 @@ end:
       if (expr.type === "int" && targetType === "string") {
         this.declareOneTime("int_to_string_ascii", "declare i8* @int_to_string_ascii(i32)");
         
-        this.emit(`${t} = call i8* @int_to_string_ascii(i32 ${expr.ptr})`);
+        local.push(`${t} = call i8* @int_to_string_ascii(i32 ${expr.ptr})`);
         
         return {
           ptr: t,
           llvmType: "i8*",
-          type: "string"
+          type: "string",
+          local
         };
       }
     
     // INT  BOOL
     
     if (expr.type === "int" && targetType === "bool") {
-      this.emit(`${t} = icmp ne i32 ${expr.ptr}, 0`);
+      local.push(`${t} = icmp ne i32 ${expr.ptr}, 0`);
       
       return {
         ptr: t,
         llvmType: "i1",
-        type: "bool"
+        type: "bool",
+        local
       };
     }
     
     // BOOL  INT
     
     if (expr.type === "bool" && targetType === "int") {
-      this.emit(`${t} = zext i1 ${expr.ptr} to i32`);
+      local.push(`${t} = zext i1 ${expr.ptr} to i32`);
       
       return {
         ptr: t,
         llvmType: "i32",
-        type: "int"
+        type: "int",
+        local
       };
     }
     
     // INT  DOUBLE
     
     if (expr.type === "int" && targetType === "double") {
-      this.emit(`${t} = sitofp i32 ${expr.ptr} to double`);
+      local.push(`${t} = sitofp i32 ${expr.ptr} to double`);
       
       return {
         ptr: t,
         llvmType: "double",
-        type: "double"
+        type: "double",
+        local
       };
     }
     
@@ -1469,12 +1527,13 @@ end:
     // DOUBLE → INT
     // ---------------------------
     if (expr.type === "double" && targetType === "int") {
-      this.emit(`${t} = fptosi double ${expr.ptr} to i32`);
+      local.push(`${t} = fptosi double ${expr.ptr} to i32`);
       
       return {
         ptr: t,
         llvmType: "i32",
-        type: "int"
+        type: "int",
+        local
       };
     }
     
@@ -1484,15 +1543,16 @@ end:
       const intTemp = this.newTemp();
       
       // step 1: bool → int
-      this.emit(`${intTemp} = zext i1 ${expr.ptr} to i32`);
+      local.push(`${intTemp} = zext i1 ${expr.ptr} to i32`);
       
       // step 2: int → double
-      this.emit(`${t} = sitofp i32 ${intTemp} to double`);
+      local.push(`${t} = sitofp i32 ${intTemp} to double`);
       
       return {
         ptr: t,
         llvmType: "double",
-        type: "double"
+        type: "double",
+        local
       };
     }
     
@@ -1501,12 +1561,13 @@ end:
     if (expr.type === "double" && targetType === "bool") {
       const t = this.newTemp();
       
-      this.emit(`${t} = fcmp une double ${expr.ptr}, 0.0`);
+      local.push(`${t} = fcmp une double ${expr.ptr}, 0.0`);
       
       return {
         ptr: t,
         llvmType: "i1",
-        type: "bool"
+        type: "bool",
+        local
       };
     }
     
@@ -1515,12 +1576,13 @@ end:
     if (expr.type === "int" && targetType === "string") {
       this.declareOneTime("int_to_string", "declare i8* @int_to_string(i32)");
       
-      this.emit(`${t} = call i8* @int_to_string(i32 ${expr.ptr})`);
+      local.push(`${t} = call i8* @int_to_string(i32 ${expr.ptr})`);
       
       return {
         ptr: t,
         llvmType: "i8*",
-        type: "string"
+        type: "string",
+        local
       };
     }
     
@@ -1529,12 +1591,13 @@ end:
     if (expr.type === "double" && targetType === "string") {
       this.declareOneTime("double_to_string", "declare i8* @double_to_string(double)");
       
-      this.emit(`${t} = call i8* @double_to_string(double ${expr.ptr})`);
+      local.push(`${t} = call i8* @double_to_string(double ${expr.ptr})`);
       
       return {
         ptr: t,
         llvmType: "i8*",
-        type: "string"
+        type: "string",
+        local
       };
     }
     
@@ -1542,12 +1605,13 @@ end:
     
     if (expr.type === "bool" && targetType === "string") {
       this.declareOneTime("bool_to_string", "declare i8* @bool_to_string(i1)");
-      this.emit(`${t} = call i8* @bool_to_string(i1 ${expr.ptr})`);
+      local.push(`${t} = call i8* @bool_to_string(i1 ${expr.ptr})`);
       
       return {
         ptr: t,
         llvmType: "i8*",
-        type: "string"
+        type: "string",
+        local
       };
     }
     
@@ -1556,12 +1620,13 @@ end:
     if (expr.type === "string" && targetType === "int") {
       this.declareOneTime("string_to_int", "declare i32 @string_to_int(i8*)");
       
-      this.emit(`${t} = call i32 @string_to_int(i8* ${expr.ptr})`);
+      local.push(`${t} = call i32 @string_to_int(i8* ${expr.ptr})`);
       
       return {
         ptr: t,
         llvmType: "i32",
-        type: "int"
+        type: "int",
+        local
       };
     }
     
@@ -1570,12 +1635,13 @@ end:
     if (expr.type === "string" && targetType === "double") {
       this.declareOneTime("string_to_double", "declare double @string_to_double(i8*)");
       
-      this.emit(`${t} = call double @string_to_double(i8* ${expr.ptr})`);
+      local.push(`${t} = call double @string_to_double(i8* ${expr.ptr})`);
       
       return {
         ptr: t,
         llvmType: "double",
-        type: "double"
+        type: "double",
+        local
       };
     }
     
@@ -1586,21 +1652,18 @@ end:
       const res = this.newTemp();
       this.declareOneTime("strlen", "declare i64 @strlen(i8*)");
       
-      this.emit(`${len} = call i64 @strlen(i8* ${expr.ptr})`);
-      this.emit(`${res} = icmp ne i64 ${len}, 0`);
+      local.push(`${len} = call i64 @strlen(i8* ${expr.ptr})`);
+      local.push(`${res} = icmp ne i64 ${len}, 0`);
       
       return {
         ptr: res,
         llvmType: "i1",
-        type: "bool"
+        type: "bool",
+        local
       };
     }
     
-    this.emitError(
-      "TypeError",
-      `Cannot cast '${expr.type}' to '${targetType}'`,
-      node
-    );
+    this.emitError("TypeError", `Cannot cast '${expr.type}' to '${targetType}'`, node)
   }
   
   loadGlobalConstants() {
@@ -2152,7 +2215,6 @@ end:
         
         const arg = this.expr.handleExpression(node.args[0]);
         
-        
         const expType =
           object?.generic?.generic?.type;
         
@@ -2162,10 +2224,7 @@ end:
             arg?.isList === true ? "List" : arg?.type;
           
           if (expArgType !== "List") {
-            this.emitError(
-              "TypeError",
-              `List ${node.object.name} method 'push' expected List but got ${expArgType}`, node
-            );
+            this.emitError("TypeError", `'${node.object.name}.push' expects a List element, got '${expArgType}'`, node.args[0])
           }
           
         } else {
@@ -2174,19 +2233,11 @@ end:
             arg?.isList === true ? "List" : arg?.type;
           
           if (expArgType !== expType) {
-            this.emitError(
-              "TypeError",
-              `List ${node.object.name} method 'push' expected ${expType} but got ${expArgType}`, node
-            );
+            this.emitError("TypeError", `'${node.object.name}.push' expects type '${expType}', got '${expArgType}'`, node.args[0])
           }
         }
         
-        
-        
-        
-        if (arg.local?.length) {
-          this.emit(arg.local.join("\n"));
-        }
+        this.emitExpr(arg)
         
         const llvmType = this.getListElementLLVM(object.generic);
         
@@ -2264,10 +2315,7 @@ end:
           index.type !== "int" || index.isList;
         
         if (invalidIndex) {
-          this.emitError(
-            "TypeError",
-            `List ${node.object.name} index must be int`, node
-          );
+          this.emitError("TypeError", `List '${node.object.name}' index must be of type 'int'`, node.args[0])
         }
         
         this.emitExpr(index)
@@ -2308,10 +2356,7 @@ end:
             arg?.isList === true ? "List" : arg?.type;
           
           if (expArgType !== "List") {
-            this.emitError(
-              "TypeError",
-              `List ${node.object.name} method 'contains' expected List but got ${expArgType}`, node
-            );
+            this.emitError("TypeError", `'${node.object.name}.contains' expects a List element, got '${expArgType}'`, node.args[0])
           }
           
         } else {
@@ -2320,17 +2365,12 @@ end:
             arg?.isList === true ? "List" : arg?.type;
           
           if (expArgType !== expType) {
-            this.emitError(
-              "TypeError",
-              `List ${node.object.name} method 'contains' expected ${expType} but got ${expArgType}`, node
-            );
+            this.emitError("TypeError", `'${node.object.name}.contains' expects type '${expType}', got '${expArgType}'`, node.args[0])
           }
         }
         
         
-        if (arg.local?.length) {
-          this.emit(arg.local.join("\n"));
-        }
+        this.emitExpr(arg);
         
         const llvmType = this.getListElementLLVM(object.generic);
         
@@ -2423,31 +2463,41 @@ end:
       }
     }
     
-    // only handle assignment nodes
-    if (node.type === "ASSIGNMENT") {
-      const op = node.operator;
-      
-      if (op !== "=") {
-        const binaryOp = op[0]; // "+=" -> "+"
-        
-        const left = {
-          type: "variable",
-          name: node.name
-        };
-        
-        node.value = {
-          type: "BINARY_EXPRESSION",
-          operator: binaryOp,
-          left,
-          right: node.value
-        };
-        
-        node.operator = "=";
-      }
-    }
+   if (node.type === "ASSIGNMENT") {
+  const op = node.operator;
+  if (op !== "=") {
+    const binaryOp = op[0];
+    node.value = {
+      type: "BINARY_EXPRESSION",
+      operator: binaryOp,
+      left: { type: "variable", name: node.name },
+      right: node.value
+    };
+    node.operator = "=";
+  }
+} else if (node.type === "MEMBER_ASSIGNMENT") {
+  const op = node.operator;
+  if (op !== "=") {
+    const binaryOp = op[0];
+    node.value = {
+      type: "BINARY_EXPRESSION",
+      operator: binaryOp,
+      left: {
+        type: "MEMBER_ACCESS",
+        object: node.object,
+        field: node.field,
+        line: node.object.line,
+        column: node.object.column
+      },
+      right: node.value
+    };
+    node.operator = "=";
+  }
+}
     
     return node;
   }
+  
   
   normalizeUpdateToExpr(update, loopVarName) {
     
@@ -2482,11 +2532,7 @@ end:
       return update;
     }
     
-    this.IRB.emitError(
-      "SyntaxError",
-      `Invalid update expression in loop`,
-      update
-    );
+    this.emitError("SyntaxError", `Invalid update expression in loop`, update)
   }
   
   getDeepestGeneric(generic) {
@@ -2520,10 +2566,7 @@ end:
       }
     }
     
-    this.emitError(
-      "ConstError",
-      `Non-constant expression used in ${context}`, node
-    );
+    this.emitError("ConstError", `Cannot use a non-constant expression in '${context}'`, node)
   }
   
   generateScreenString(typeInfo) {

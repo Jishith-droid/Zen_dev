@@ -5,11 +5,9 @@ export class Time {
   }
   zenNativeTIMECall(node, globalScope, funcName, returnType, paramCount = 0, params, name) {
     
-    const isVarDecl = node.type === "VARIABLE_DECLARATION";
-    const isVarRef = node.type === "VARIABLE_REFERENCE";
     const isAwait = node.isAwait;
     
-    const args = isVarDecl || isVarRef ? node.value.args : node.args;
+    const args = node.args;
     
     if (args.length !== paramCount) {
       this.IRB.emitError(
@@ -18,19 +16,21 @@ export class Time {
       );
     }
     
-    // -------------------------
     // Expression evaluation
-    // -------------------------
     const exprs = args.map(arg => this.expr.handleExpression(arg));
     
     exprs.forEach((expr, i) => {
       const actualType = expr.type;
       const expectedType = params[i];
+      const isList = expr?.isList;
+      const displayType = isList ?
+        `List` :
+        actualType;
       
-      if (actualType !== expectedType) {
+      if (isList || (expectedType !== actualType)) {
         this.IRB.emitError(
           "TypeError",
-          `Function ${name} expects ${expectedType} at arg ${i + 1}, got ${actualType}`, node
+          `Function ${name} expects ${expectedType} at arg ${i + 1}, got ${actualType}`, node.args[i]
         );
       }
     });
@@ -61,9 +61,8 @@ export class Time {
       if (e.global?.length) this.IRB.emit(e.global.join("\n"));
     });
     
-    // -------------------------
     // Build LLVM call args safely
-    // -------------------------
+
     const callArgs = exprs.map(e => {
       const t = getArgType(e.type);
       return `${t} ${e.ptr}`;
@@ -71,76 +70,15 @@ export class Time {
     
     const llvmRet = this.IRB.getLLVMType(returnType);
     
-    // -------------------------
-    // Function declaration (once)
-    // -------------------------
+    // Function declaration 
+
     this.IRB.declareOneTime(
       funcName,
       `declare ${llvmRet} @${funcName}(${exprs.map(e => getArgType(e.type)).join(", ")})`
     );
     
-    let isConstant;
-    let ptr = null;
-    
-    // -------------------------
-    // VARIABLE DECLARATION
-    // -------------------------
-    if (isVarDecl) {
-      const name = node.name;
-      const gName = this.IRB.newGlobalTemp();
-      const lName = this.IRB.newTemp();
-      const declaredType = node.dataType;
-      const llvmType = this.IRB.getLLVMType(declaredType);
-      isConstant = node.isConstant;
-      
-      const t = this.IRB.newTemp();
-      this.IRB.emit(`${t} = call ${llvmRet} @${funcName}(${callArgs})`);
-      
-      if (globalScope) {
-        const initialValue = this.IRB.initialValue(declaredType);
-        this.IRB.globals.push(`${gName} = global ${llvmRet} ${initialValue}`);
-        this.IRB.emit(`store ${llvmType} ${t}, ${llvmType}* ${gName}`);
-        ptr = gName;
-      } else {
-        this.IRB.emitAlloca(llvmType, lName);
-        this.IRB.emit(`store ${llvmType} ${t}, ${llvmType}* ${lName}`);
-        ptr = lName;
-      }
-      
-      this.IRB.setVar(name, this.IRB.createData({
-        ptr: globalScope ? gName : lName,
-        llvmType,
-        type: declaredType,
-        isConstant,
-        isGlobal: globalScope,
-        needsLoad: true,
-        name
-      }));
-      
-      this.IRB.logSymbolTable();
-    }
-    
-    // -------------------------
-    // VARIABLE REFERENCE
-    // -------------------------
-    if (isVarRef) {
-      const data = this.IRB.getVar(node.name);
-      isConstant = data.isConstant;
-      
-      const ptr = data.ptr;
-      ptr = ptr;
-      const llvmType = data.llvmType;
-      
-      const t = this.IRB.newTemp();
-      this.IRB.emit(`${t} = call ${llvmRet} @${funcName}(${callArgs})`);
-      
-      this.IRB.emit(`store ${llvmType} ${t}, ${llvmType}* ${ptr}`);
-    }
-    
-    // -------------------------
-    // PURE CALL (no assignment)
-    // -------------------------
-    if (!isVarDecl && !isVarRef) {
+    // PURE CALL 
+
       let t = null;
       if (llvmRet === "void") {
         this.IRB.emit(`call ${llvmRet} @${funcName}(${callArgs})`);
@@ -149,20 +87,16 @@ export class Time {
         this.IRB.emit(`${t} = call ${llvmRet} @${funcName}(${callArgs})`);
         
       }
-      ptr = t
-    }
     
-    // -------------------------
+    
     // Return ZEN IR object
-    // -------------------------
+
     return {
-      ptr,
+      ptr: t,
       type: returnType,
       llvmType: llvmRet,
       local: [],
       global: [],
-      isGlobal: globalScope,
-      isConstant,
       postOrPrefix: false,
       needsLoad: true
     };

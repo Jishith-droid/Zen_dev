@@ -8,15 +8,15 @@ fn printDivider() {
 }
 
 fn printHeader() {
-  color("green")
+  sys.color("green")
   printDivider()
   screen("       ZEN Mini File Manager v1.0")
   printDivider()
-  color("reset")
+  sys.color("reset")
 }
 
 fn printMenu() {
-  color("cyan")
+  sys.color("cyan")
   screen("")
   screen("  [1] Show current directory")
   screen("  [2] Read a file")
@@ -29,14 +29,14 @@ fn printMenu() {
   screen("  [9] Change directory")
   screen("  [0] Exit")
   screen("")
-  color("reset")
+  sys.color("reset")
 }
 
 fn showCwd() {
   string dir = fs.cwd()
-  color("yellow")
+  sys.color("yellow")
   screen("  Current Directory: " + dir)
-  color("reset")
+  sys.color("reset")
 }
 
 fn readFileOp() {
@@ -44,18 +44,18 @@ fn readFileOp() {
   bool found = fs.exists(path)
   if (found) {
     string content = fs.readFile(path)
-    color("green")
+    sys.color("green")
     screen("")
     screen("  ---- File Content ----")
-    color("reset")
+    sys.color("reset")
     screen(content)
-    color("green")
+    sys.color("green")
     screen("  ----------------------")
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: File not found — " + path)
-    color("reset")
+    sys.color("reset")
   }
 }
 
@@ -63,137 +63,153 @@ fn writeFileOp() {
   string path = input("  Enter file path: ")
   string content = input("  Enter content: ")
   int result = fs.writeFile(path, content)
+
   if (result == 0) {
-    color("green")
+    sys.color("green")
     screen("  Success: Written to " + path)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: Could not write to " + path)
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn appendFileOp() {
   string path = input("  Enter file path: ")
   bool found = fs.exists(path)
+
   if (!found) {
-    color("red")
+    sys.color("red")
     screen("  Error: File not found — " + path)
-    color("reset")
+    sys.color("reset")
     return
   }
+
   string content = input("  Enter content to append: ")
   int result = fs.appendFile(path, content)
+
   if (result == 0) {
-    color("green")
+    sys.color("green")
     screen("  Success: Appended to " + path)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: Could not append to " + path)
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn existsOp() {
   string path = input("  Enter file or directory path: ")
   bool found = fs.exists(path)
+
   if (found) {
-    color("green")
+    sys.color("green")
     screen("  Exists: " + path)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Not found: " + path)
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn renameOp() {
   string oldPath = input("  Enter current file name: ")
   bool found = fs.exists(oldPath)
+
   if (!found) {
-    color("red")
+    sys.color("red")
     screen("  Error: File not found — " + oldPath)
-    color("reset")
+    sys.color("reset")
     return
   }
+
   string newPath = input("  Enter new file name: ")
   int result = fs.renameFile(oldPath, newPath)
+
   if (result == 0) {
-    color("green")
+    sys.color("green")
     screen("  Success: Renamed " + oldPath + " → " + newPath)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: Could not rename " + oldPath)
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn deleteOp() {
   string path = input("  Enter file path to delete: ")
   bool found = fs.exists(path)
+
   if (!found) {
-    color("red")
+    sys.color("red")
     screen("  Error: File not found — " + path)
-    color("reset")
+    sys.color("reset")
     return
   }
+
   string confirm = input("  Are you sure? (yes/no): ")
   bool yes = match(confirm, "yes")
+
   if (yes) {
     int result = fs.deleteFile(path)
+
     if (result == 0) {
-      color("green")
+      sys.color("green")
       screen("  Success: Deleted " + path)
-      color("reset")
+      sys.color("reset")
     } else {
-      color("red")
+      sys.color("red")
       screen("  Error: Could not delete " + path)
-      color("reset")
+      sys.color("reset")
     }
   } else {
-    color("yellow")
+    sys.color("yellow")
     screen("  Cancelled.")
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn makeDirOp() {
   string path = input("  Enter directory name: ")
   int result = fs.makeDir(path)
+
   if (result == 0) {
-    color("green")
+    sys.color("green")
     screen("  Success: Directory created — " + path)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: Could not create directory " + path)
-    color("reset")
+    sys.color("reset")
   }
 }
 
 fn changeDirOp() {
   string path = input("  Enter directory path: ")
   bool found = fs.exists(path)
+
   if (!found) {
-    color("red")
+    sys.color("red")
     screen("  Error: Directory not found — " + path)
-    color("reset")
+    sys.color("reset")
     return
   }
+
   int result = fs.changeDir(path)
+
   if (result == 0) {
     string newDir = fs.cwd()
-    color("green")
+    sys.color("green")
     screen("  Moved to: " + newDir)
-    color("reset")
+    sys.color("reset")
   } else {
-    color("red")
+    sys.color("red")
     screen("  Error: Could not change directory")
-    color("reset")
+    sys.color("reset")
   }
 }
 
@@ -217,9 +233,9 @@ fn handleChoice(int choice) {
   } else if (choice == 9) {
     changeDirOp()
   } else {
-    color("red")
+    sys.color("red")
     screen("  Invalid choice. Please enter 0-9.")
-    color("reset")
+    sys.color("reset")
   }
 }
 
@@ -234,15 +250,15 @@ bool running = true
 
 while (running) {
   printMenu()
-  int choice = input("  Enter choice: ")
+  int choice = Int(input("  Enter choice: "))
 
   if (choice == 0) {
-    color("green")
+    sys.color("green")
     screen("")
     printDivider()
     screen("  Goodbye from ZEN File Manager!")
     printDivider()
-    color("reset")
+    sys.color("reset")
     running = false
   } else {
     screen("")

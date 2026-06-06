@@ -19,7 +19,6 @@ import { OS } from './lib/builtins/os/os.js';
 import { Time } from './lib/builtins/time/time.js';
 import { ZenNetwork } from './lib/builtins/network/network.js';
 import { InferType } from '/src/codegen/infer/infer.js';
-import { ZenError } from './lib/builtins/error/error.js';
 import { ZenFileSystem } from './lib/builtins/fileSystem/file.js';
 import { IO } from './lib/builtins/io/io.js';
 import { ZenString } from './lib/builtins/string/string.js';
@@ -47,10 +46,9 @@ export class CodeGen {
     
     this.io = new IO(this.IRB, this.expr);
     
-    this.error = new ZenError(this.IRB, this.io);
     this.type = new Type(this.IRB, this.expr);
     this.string = new ZenString(this.IRB, this.expr);
-    this.call = new Call(this.IRB, this.expr, this.io, this.type, this.string, this.error, this.file, this.os, this.time, this.network, this.http, this.sys);
+    this.call = new Call(this.IRB, this.expr, this.io, this.type, this.string, this.file, this.os, this.time, this.network, this.http, this.sys);
     
     this.expr.setCall(this.call);
     this.call.setExpression(this.expr);
@@ -91,7 +89,7 @@ export class CodeGen {
     }
     
     if (!this.IRB.exported && !this.IRB.stdlibMode) {
-      this.IRB.emit("define void @main() { \nentry:\n");
+      this.IRB.emit("define i32 @main() { \nentry:\n");
     }
     
     // set builtins
@@ -117,7 +115,7 @@ export class CodeGen {
         
         const returnType = node.returnType === "void" ?
           "void" : node.returnType.type;
-           
+        
         
         const isArrayRet = returnType === "void" ? false : returnType === "List" ? false : node.returnType?.dimensions.length > 0;
         const retGeneric = returnType === "List" ? this.IRB.getDeepestGeneric(node.returnType.generic) : returnType;
@@ -141,7 +139,7 @@ export class CodeGen {
       this.dispatch(node);
     }
     if (!this.IRB.exported && !this.IRB.stdlibMode) {
-      this.IRB.emit("ret void \n}");
+      this.IRB.emit("ret i32 0 \n}");
     }
     
     if (!this.IRB.DEBUG_IR) {
@@ -330,10 +328,10 @@ export class CodeGen {
       if (globalScope) {
         
         if (t.isList) {
-        this.IRB.emitError(
-          "TypeError",
-          `${node.name} expect ${t.type} but got 'List'`, node
-        );
+          this.IRB.emitError(
+            "TypeError",
+            `${node.name} expect ${t.type} but got 'List'`, node
+          );
         }
         
         const initialValue = this.IRB.initialValue(node.dataType);
@@ -399,6 +397,14 @@ export class CodeGen {
     
     if (COMPOUND_OPERATORS.includes(node.expression.operator)) {
       const normalisedNode = this.IRB.normalizeCompound(node);
+      
+      const isMemberAssign = normalisedNode.expression.type === "MEMBER_ASSIGNMENT";
+      
+      if (isMemberAssign) {
+        // inside redirect ro map assign or struct 
+        this.struct.assignStruct(normalisedNode.expression, globalScope);
+        return;
+      }
       
       return this.variable.variableReference(normalisedNode);
     }

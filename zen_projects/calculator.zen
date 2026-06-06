@@ -1,0 +1,37 @@
+int x = Int(input("Enter Left Operand: "))
+int op = Int(input("Enter operator: (1 = +, 2 = -, 3 = *, 4 = /, 5 = %) "))
+int y = Int(input("Enter Right Operand: "))
+
+List<int> map = [1, 2, 3, 4, 5]
+
+int result 
+string formatted_op
+
+if (map.contains(op)) {
+  switch (Int(op)) {
+     case 1:
+     result = x + y
+     formatted_op = "+"
+     case 2:
+     result = x - y
+formatted_op = "-"
+     case 3:
+     result = x * y
+formatted_op = "*"
+    case 4:
+if (y == 0) {
+     sys.panic("Division by zero")
+  }
+     result = x / y
+formatted_op = "/"
+     case 5:
+     result = x % y
+formatted_op = "%"
+  }
+} else {
+   sys.panic(`Invalid operator ${op}`)
+}
+
+sys.color("green")
+screen(`${x} ${formatted_op} ${y} = ${result}`)
+sys.color("reset")

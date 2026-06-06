@@ -1,0 +1,244 @@
+fn makeToken(string type, string value, string line, string col) List<string> {
+  List<string> t
+  t.push(type)
+  t.push(value)
+  t.push(line)
+  t.push(col)
+  return t
+}
+
+fn lexerNew(string source) List<string> {
+  List<string> l
+  l.push("0")
+  l.push("1")
+  l.push("1")
+  l.push(source)
+  return l
+}
+
+fn pos(List<string> l) int { return Int(l[0]) }
+fn line(List<string> l) int { return Int(l[1]) }
+fn col(List<string> l) int { return Int(l[2]) }
+fn src(List<string> l) string { return l[3] }
+
+fn setPos(List<string> l, int v) { l[0] = String(v) }
+fn setLine(List<string> l, int v) { l[1] = String(v) }
+fn setCol(List<string> l, int v) { l[2] = String(v) }
+
+fn lexerAdvance(List<string> l) List<string> {
+
+  string s = src(l)
+  int p = pos(l)
+  int ln = line(l)
+  int c = col(l)
+
+  if (s[p] == "\n") {
+    ln = ln + 1
+    c = 1
+  } else {
+    c = c + 1
+  }
+
+  p = p + 1
+
+  setPos(l, p)
+  setLine(l, ln)
+  setCol(l, c)
+
+  return l
+}
+
+fn tokenize(string source) List<List<string>> {
+
+  List<string> l = lexerNew(source)
+  List<List<string>> tokens
+
+  while (pos(l) < length(src(l))) {
+
+    string ch = src(l)[pos(l)]
+
+    // NEWLINE
+    if (ch == "\n") {
+      tokens.push(makeToken("NEWLINE", "\n", String(line(l)), String(col(l))))
+      l = lexerAdvance(l)
+      continue
+    }
+
+    // WHITESPACE
+    if (ch == " " || ch == "\t" || ch == "\r") {
+      l = lexerAdvance(l)
+      continue
+    }
+
+    // COMMENT #
+    if (ch == "#") {
+      while (pos(l) < length(src(l)) && src(l)[pos(l)] != "\n") {
+        l = lexerAdvance(l)
+      }
+      continue
+    }
+
+    // COMMENT //
+    if (ch == "/" && src(l)[pos(l) + 1] == "/") {
+      while (pos(l) < length(src(l)) && src(l)[pos(l)] != "\n") {
+        l = lexerAdvance(l)
+      }
+      continue
+    }
+
+    // IDENTIFIER / KEYWORD
+    if (match(ch, "#a") || ch == "_") {
+
+      string word = ""
+      int sl = line(l)
+      int sc = col(l)
+
+      while (pos(l) < length(src(l)) &&
+            (match(src(l)[pos(l)], "#x") || src(l)[pos(l)] == "_")) {
+
+        word = word + src(l)[pos(l)]
+        l = lexerAdvance(l)
+      }
+
+      if (word == "true" || word == "false") {
+        tokens.push(makeToken("BOOLEAN", word, String(sl), String(sc)))
+        continue
+      }
+
+      if (word == "int" || word == "float" || word == "string" ||
+          word == "bool" || word == "void" || word == "auto") {
+        tokens.push(makeToken("TYPE", word, String(sl), String(sc)))
+        continue
+      }
+
+      if (word == "fn" || word == "return" || word == "if" || word == "else" ||
+          word == "while" || word == "loop" || word == "break" ||
+          word == "continue" || word == "struct") {
+        tokens.push(makeToken("KEYWORD", word, String(sl), String(sc)))
+        continue
+      }
+
+      tokens.push(makeToken("IDENTIFIER", word, String(sl), String(sc)))
+      continue
+    }
+
+    // NUMBER
+    if (match(ch, "#d")) {
+
+      string num = ""
+      bool dot = false
+      int sl = line(l)
+      int sc = col(l)
+
+      while (pos(l) < length(src(l)) &&
+            (match(src(l)[pos(l)], "#d") || src(l)[pos(l)] == ".")) {
+
+        if (src(l)[pos(l)] == ".") {
+          if (dot) { break }
+          dot = true
+        }
+
+        num = num + src(l)[pos(l)]
+        l = lexerAdvance(l)
+      }
+
+      if (dot) {
+        tokens.push(makeToken("DOUBLE", num, String(sl), String(sc)))
+      } else {
+        tokens.push(makeToken("INT", num, String(sl), String(sc)))
+      }
+
+      continue
+    }
+
+    // STRING
+    if (ch == "\"" || ch == "'") {
+
+      string quote = ch
+      string out = ""
+      l = lexerAdvance(l)
+
+      int sl = line(l)
+      int sc = col(l)
+
+      while (pos(l) < length(src(l)) && src(l)[pos(l)] != quote) {
+
+        if (src(l)[pos(l)] == "\\") {
+          l = lexerAdvance(l)
+
+          if (src(l)[pos(l)] == "n") { out = out + "\n" }
+          else if (src(l)[pos(l)] == "t") { out = out + "\t" }
+          else if (src(l)[pos(l)] == "r") { out = out + "\r" }
+          else { out = out + src(l)[pos(l)] }
+
+          l = lexerAdvance(l)
+          continue
+        }
+
+        out = out + src(l)[pos(l)]
+        l = lexerAdvance(l)
+      }
+
+      l = lexerAdvance(l)
+      tokens.push(makeToken("STRING", out, String(sl), String(sc)))
+      continue
+    }
+
+    // OPERATORS
+    string two = ch + src(l)[pos(l) + 1]
+
+    if (two == "==" || two == "!=" || two == "<=" || two == ">=" ||
+        two == "&&" || two == "||" || two == "+=" || two == "-=" ||
+        two == "*=" || two == "/=" || two == "%=") {
+
+      tokens.push(makeToken("OP", two, String(line(l)), String(col(l))))
+      l = lexerAdvance(l)
+      l = lexerAdvance(l)
+      continue
+    }
+
+    if (ch == "+" || ch == "-" || ch == "*" || ch == "/" ||
+        ch == "%" || ch == "=" || ch == "<" || ch == ">" ||
+        ch == "!") {
+
+      tokens.push(makeToken("OP", ch, String(line(l)), String(col(l))))
+      l = lexerAdvance(l)
+      continue
+    }
+
+    // SYMBOLS
+    if (ch == "(" || ch == ")" || ch == "{" || ch == "}" ||
+        ch == "[" || ch == "]" || ch == "," || ch == ":" ||
+        ch == "." || ch == ";" || ch == "?") {
+
+      tokens.push(makeToken("SYM", ch, String(line(l)), String(col(l))))
+      l = lexerAdvance(l)
+      continue
+    }
+
+    screen("SyntaxError: " + ch)
+    break
+  }
+
+  tokens.push(makeToken("EOF", "", String(line(l)), String(col(l))))
+  return tokens
+}
+
+// TEST
+List<List<string>> result = tokenize(
+`fn add(int a, int b) int {
+  int result = a + b * 2
+  return result
+}
+
+int x = add(10, 20)`
+)
+
+loop (t of result) {
+  screen(`
+  token : ${t[0]}
+  value : ${t[1]}
+  line : ${t[2]}
+  col : ${t[3]}
+  `)
+}

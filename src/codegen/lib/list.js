@@ -221,7 +221,7 @@ export class ZenList {
       
       const expr =
         this.expr.handleExpression(node.value);
-      
+      console.log(expr)
       const isValidList =
         expr.isList;
       
@@ -237,7 +237,7 @@ export class ZenList {
         );
       }
       
-      if (type !== expr.type) {
+      if (isValidList && (type !== expr.type)) {
         this.IRB.emitError("TypeError", `List ${name} expected ${type} but got ${expr.type}`, node)
       }
       

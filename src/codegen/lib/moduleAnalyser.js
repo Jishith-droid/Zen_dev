@@ -31,10 +31,7 @@ export class Module {
     const imports = node.names;
     
     if (!source) {
-      this.IRB.emitError(
-        "SyntaxError",
-        "import requires source path", node
-      );
+      this.IRB.emitError("ImportError", `'import' requires a source file path`, node)
     }
     
     // already compiled
@@ -188,10 +185,7 @@ export class Module {
     for (const name of names) {
       
       if (seen.has(name)) {
-        this.IRB.emitError(
-          `TypeError`,
-          `duplicate ${type.toLowerCase()} ${name}`
-        );
+        this.IRB.emitError("DeclarationError", `Duplicate ${type.toLowerCase()} '${name}' is already defined`, node)
       }
       
       seen.add(name);
@@ -213,10 +207,7 @@ export class Module {
       this.modules.get(source);
     
     if (!moduleData) {
-      this.IRB.emitError(
-        "ModuleError",
-        `Unknown module ${source}`
-      );
+      this.IRB.emitError("ImportError", `Cannot resolve module '${source}' — file not found`, node)
     }
     
     imports.forEach(name => {

@@ -18,6 +18,7 @@
       const lName = this.IRB.newTemp();
       const valueType = node.value.type;
       let declaredType = node.dataType;
+      const isReactive = node?.isReactive;
       if (declaredType === "auto") declaredType = this.infer.infer(node);
       
       const llvmType = this.IRB.getLLVMType(declaredType);
@@ -27,14 +28,45 @@
       
       this.IRB.bindLineColumn(node)
       
+      if (isReactive) {
+        const varRefs = this.IRB.collectVarRefs(node.value);
+        this.IRB.reactiveMap.set(name, {
+          deps: varRefs,
+          expr: node.value
+        });
+        
+        for (const dep of varRefs) {
+          
+          if (this.IRB.hasPath(name, dep)) {
+            this.IRB.emitError("DeclarationError", `Circular reactive dependency detected between '${name}' and '${dep}'`, node)
+          }
+          
+          if (!this.IRB.dependents.has(dep)) {
+            this.IRB.dependents.set(dep, []);
+          }
+          
+          this.IRB.dependents.get(dep).push(name);
+        }
+      }
+      
       const expr = this.expr.handleExpression(node.value, globalScope);
       
       if (this.IRB.isDeclaredInCurrentScope(name)) {
-        this.IRB.emitError("ReferenceError", `variable ${name} already defined`, node);
+        this.IRB.emitError("DeclarationError", `Variable '${name}' is already defined`, node)
       }
       
-      if (declaredType !== expr.type) {
-        this.IRB.emitError("TypeError", `variable ${name} expect ${declaredType} but got ${expr.type}`, node);
+      const actual = expr?.isList ?
+        `List` :
+        expr.type;
+      
+      const expected = declaredType;
+      
+      if (expr?.isList || declaredType !== expr.type) {
+        this.IRB.emitError(
+          "TypeError",
+          `Cannot assign '${actual}' to variable '${name}' of type '${expected}'`,
+          node
+        );
       }
       
       if (globalScope) { // global
@@ -74,6 +106,7 @@
         llvmType,
         type: declaredType,
         isConstant,
+        isReactive,
         isGlobal: globalScope,
         needsLoad: true
       }));
@@ -89,6 +122,8 @@
       const lName = this.IRB.newTemp();
       let valueTtype = node.value.type;
       let declaredType = node.dataType;
+      const isReactive = node?.isReactive;
+      
       if (declaredType === "auto") {
         declaredType = this.infer.infer(node);
       }
@@ -98,12 +133,43 @@
       
       this.IRB.bindLineColumn(node)
       
+      if (isReactive) {
+        const varRefs = this.IRB.collectVarRefs(node.value);
+        this.IRB.reactiveMap.set(name, {
+          deps: varRefs,
+          expr: node.value
+        });
+        
+        for (const dep of varRefs) {
+          
+          if (this.IRB.hasPath(name, dep)) {
+            this.IRB.emitError("DeclarationError", `Circular reactive dependency detected between '${name}' and '${dep}'`, node)
+          }
+          
+          if (!this.IRB.dependents.has(dep)) {
+            this.IRB.dependents.set(dep, []);
+          }
+          
+          this.IRB.dependents.get(dep).push(name);
+        }
+      }
+      
       const expr = this.expr.handleExpression(node.value, globalScope);
       
       this.IRB.emitExpr(expr);
       
-      if (declaredType !== expr.type) {
-        this.IRB.emitError("TypeError", `variable ${name} expect string but got ${expr.type}`, node);
+      const actual = expr?.isList ?
+        `List` :
+        expr.type;
+      
+      const expected = declaredType;
+      
+      if (expr?.isList || declaredType !== expr.type) {
+        this.IRB.emitError(
+          "TypeError",
+          `Cannot assign '${actual}' to variable '${name}' of type '${expected}'`,
+          node
+        );
       }
       
       if (globalScope) { // global scope
@@ -135,6 +201,7 @@
         llvmType,
         type: declaredType,
         isConstant,
+        isReactive,
         isGlobal: globalScope,
         rawStr: expr?.rawStr,
         needsLoad: true
@@ -186,7 +253,7 @@
         
         if (base) {
           
-          const isArrayType = varInfo.llvmType.startsWith("[");
+          const isArrayType = varInfo.llvmType?.startsWith("[");
           const isZenList = varInfo.llvmType === "%ZenList*";
           
           const isStringReassignment =
@@ -195,7 +262,7 @@
             !isZenList;
           
           if (isStringReassignment) {
-            this.IRB.emitError("SemanticError", `Invalid reassignment: '${base.name}' is a string and cannot be modified after initialization`, node);
+            this.IRB.emitError("ConstError", `Cannot reassign '${base.name}' — strings are immutable`, node)
           }
         }
         
@@ -240,11 +307,7 @@
           if (layout && keyExpr.rawStr && layout[keyExpr.rawStr]) {
             const expected = layout[keyExpr.rawStr].type;
             if (expected !== valExpr.type) {
-              this.IRB.emitError(
-                "TypeError",
-                `Map '${base.name}' expected ${expected} but got ${valExpr.type}`,
-                node
-              );
+              this.IRB.emitError("TypeError", `Map '${base.name}' expects value of type '${expected}', got '${valExpr.type}'`, node)
             }
           }
           
@@ -254,24 +317,18 @@
           
           return;
         }
-      
+        
         if (varInfo.isList) {
           const generic = this.IRB.getDeepestGeneric(varInfo.generic);
           if (generic !== valExpr.type) {
-            this.IRB.emitError(
-              "TypeError",
-              `List '${base.name}' expected ${generic} but got ${valExpr.type}`, node
-            );
+            this.IRB.emitError("TypeError", `List '${base.name}' expects element of type '${generic}', got '${valExpr.type}'`, node)
           }
         }
         
         if (varInfo.isArray) {
           const type = varInfo.type;
           if (type !== valExpr.type) {
-            this.IRB.emitError(
-              "TypeError",
-              `array '${base.name}' expected ${type} but got ${valExpr.type}`, node
-            );
+            this.IRB.emitError("TypeError", `Array '${base.name}' expects element of type '${type}', got '${valExpr.type}'`, node)
           }
         }
         
@@ -345,19 +402,12 @@
       const expr = this.expr.handleExpression(expression.value);
       
       if (orgData.type !== expr.type) {
-        this.IRB.emitError(
-          "TypeError",
-          `variable '${name}' expected ${orgType} but got ${expr.type}`, node
-        );
+        this.IRB.emitError("TypeError", `Cannot assign '${expr.type}' to variable '${name}' of type '${orgType}'`, node)
       }
       
       if (orgData.isList) {
         if (orgData.isList !== expr.isList) {
-          this.IRB.emitError(
-            "TypeError",
-            `variable '${name}' expected ${orgData.isList ? "List" : "non-List"} but got ${expr.isList ? "List" : expr.type}`,
-            node
-          );
+          this.IRB.emitError("TypeError", `Cannot assign '${expr.isList ? "List" : expr.type}' to variable '${name}' of type '${orgData.isList ? "List" : "non-List"}'`, node)
         }
       }
       
@@ -366,6 +416,8 @@
       this.IRB.emit(
         `store ${llvmType} ${expr.ptr}, ptr ${orgPtr}`
       );
+      
+      this.IRB.updateReactive(expression.name);
     }
     
     handleUnary(node, fromVarRef) {
@@ -438,12 +490,6 @@
         return;
       }
       
-      if (node.value.isInbuilt && !STD_FUNCTIONS.includes(node.value.name)) {
-        
-        this.call.handleBuiltInCall(node, globalScope);
-        return;
-      }
-      
       this.IRB.guardGlobal(name, node);
       let dataType = node.dataType;
       if (dataType === "auto") {
@@ -458,17 +504,11 @@
       
       // void check
       if (val?.returnType === "void") {
-        this.IRB.emitError(
-          "TypeError",
-          `${node.value.name}() void function cannot be assigned`, node
-        );
+        this.IRB.emitError("TypeError", `Cannot assign result of '${node.value.name}' — function returns void`, node)
       }
       
       if (val.type !== dataType) {
-        this.IRB.emitError(
-          "TypeError",
-          `${name} expected ${dataType} but got ${val.type}`, node
-        );
+        this.IRB.emitError("TypeError", `Cannot assign '${val.type}' to variable '${name}' of type '${dataType}'`, node)
       }
       
       let ptr;
@@ -722,11 +762,7 @@
           const structInfo = this.IRB.getStruct(structName);
           
           if (!structInfo) {
-            this.IRB.emitError(
-              "TypeError",
-              `Cannot access field '${f}' on non-struct type '${structName}'`,
-              exprNode
-            );
+            this.IRB.emitError("TypeError", `Cannot access field '${f}' on non-struct type '${structName}'`, exprNode)
           }
           
           const idx = structInfo.fieldMap[f];
@@ -791,11 +827,7 @@
           }
           
           if (idx === undefined) {
-            this.IRB.emitError(
-              "TypeError",
-              `Unknown field '${f}' in struct '${structName}'`,
-              exprNode
-            );
+            this.IRB.emitError("ReferenceError", `Field '${f}' does not exist in struct '${structName}'`, exprNode)
           }
           
           const ptr = this.IRB.newTemp();
@@ -819,11 +851,7 @@
         llvmType = varInfo.llvmType;
         
       } else {
-        this.IRB.emitError(
-          "TypeError",
-          "Invalid target for array assignment",
-          exprNode
-        );
+        this.IRB.emitError("TypeError", `Invalid assignment target — expected an array variable`, exprNode)
       }
       
       // 2. apply indices 

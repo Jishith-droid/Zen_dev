@@ -1,0 +1,50 @@
+List<List<int>> graph = [
+    [0, 4, 2, 0],
+    [4, 0, 5, 10],
+    [2, 5, 0, 3],
+    [0, 10, 3, 0]
+]
+
+int n = graph.length
+
+List<int> dist = []
+List<bool> visited = []
+
+loop (int i = 0, i < n, i += 1) {
+    dist.push(999999)
+    visited.push(false)
+}
+
+dist[0] = 0
+
+loop (int count = 0, count < n - 1, count += 1) {
+
+    // find minimum distance node
+    int min = 999999
+    int u = -1
+
+    loop (int i = 0, i < n, i += 1) {
+        if (!visited[i] && dist[i] <= min) {
+            min = dist[i]
+            u = i
+        }
+    }
+
+    visited[u] = true
+
+    // relax edges
+    loop (int v = 0, v < n, v += 1) {
+        if (!visited[v] &&
+            graph[u][v] != 0 &&
+            dist[u] != 999999 &&
+            dist[u] + graph[u][v] < dist[v]) {
+
+            dist[v] = dist[u] + graph[u][v]
+        }
+    }
+}
+
+// print result
+loop (v of dist) {
+    screen(v)
+}

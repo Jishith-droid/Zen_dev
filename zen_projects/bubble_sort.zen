@@ -1,0 +1,13 @@
+List<int> arr = [10, 2, 26, 5, 7, 1, 8]
+
+loop (int i = 0, i < arr.length, i += 1) {
+loop (int j = 0, j < arr.length - i - 1, j += 1) {
+if (arr[j] > arr[j + 1]) {
+auto temp = arr[j]
+arr[j] = arr[j + 1]
+arr[j + 1] = temp
+}
+}
+}
+
+loop (v of arr) screen(v)

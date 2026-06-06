@@ -1,12 +1,11 @@
 import { NON_STANDALONE_BUILTINS, OS_MAP, FILE_MAP, TIME_MAP, NETWORK_MAP, SYS_MAP, HTTP_MAP, STD_FUNCTIONS } from '/src/config/config.js';
 
 export class Call {
-  constructor(IRB, expr, io, type, string, error, file, os, time, network, http, sys) {
+  constructor(IRB, expr, io, type, string, file, os, time, network, http, sys) {
     this.IRB = IRB;
     this.io = io;
     this.type = type;
     this.string = string;
-    this.error = error;
     this.file = file;
     this.os = os;
     this.time = time;
@@ -63,6 +62,7 @@ export class Call {
     if (node.isInbuilt && !STD_FUNCTIONS.includes(name)) {
       
       this.IRB.leaveFunction();
+      
       return this.handleBuiltInCall(node, globalScope);
     }
     
@@ -282,7 +282,7 @@ export class Call {
       const isMap = fn.returnType === "Map";
       return {
         ptr: callTmp,
-        type: fn.returnType,
+        type: isList ? fn.retGeneric : fn.returnType,
         llvmType: isList ?
           "%ZenList" : this.IRB.getLLVMType(fn.returnType),
         generic: isList ? fn.generic : null,
@@ -376,14 +376,9 @@ export class Call {
     
     this.IRB.guardStackOp("CALL", node);
     
-    let name = null;
     const type = node?.type;
     
-    if (type === "VARIABLE_DECLARATION" || type === "VARIABLE_REFERENCE") {
-      name = node.value.name;
-    } else {
-      name = node.name;
-    }
+    let name = node.name;
     
     switch (name) {
       case 'screen':
@@ -391,8 +386,7 @@ export class Call {
         break;
         
       case 'input':
-        this.io.input(node, globalScope);
-        break;
+       return this.io.input(node, globalScope);
         
       case 'type':
         return this.type.type(node, globalScope);

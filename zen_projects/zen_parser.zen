@@ -1,0 +1,615 @@
+List<List<string>> arena
+
+fn arenaAdd(List<string> node) int {
+  int idx = arena.length
+  arena.push(node)
+  return idx
+}
+
+fn arenaGet(int idx) List<string> {
+  return arena[idx]
+}
+
+// ─── PARSER STATE ─────────────────────────────────────────────────────────────
+
+fn parserNew() List<string> {
+  List<string> p
+  p.push("0")
+  p.push("")
+  return p
+}
+
+fn ppos(List<string> p) int { return Int(p[0]) }
+fn perr(List<string> p) string { return p[1] }
+fn setppos(List<string> p, int v) { p[0] = String(v) }
+fn setperr(List<string> p, string v) { p[1] = v }
+
+// ─── TOKEN ACCESSORS ──────────────────────────────────────────────────────────
+
+fn tokType(List<List<string>> tokens, int i) string { return tokens[i][0] }
+fn tokVal(List<List<string>> tokens, int i) string  { return tokens[i][1] }
+
+fn peek(List<string> p, List<List<string>> tokens) string {
+  return tokType(tokens, ppos(p))
+}
+
+fn peekVal(List<string> p, List<List<string>> tokens) string {
+  return tokVal(tokens, ppos(p))
+}
+
+fn advance(List<string> p, List<List<string>> tokens) string {
+  string val = tokVal(tokens, ppos(p))
+  setppos(p, ppos(p) + 1)
+  return val
+}
+
+fn expect(List<string> p, List<List<string>> tokens, string type, string val) bool {
+  if (tokType(tokens, ppos(p)) != type || tokVal(tokens, ppos(p)) != val) {
+    setperr(p, "Expected " + val + " but got " + tokVal(tokens, ppos(p)))
+    return false
+  }
+  setppos(p, ppos(p) + 1)
+  return true
+}
+
+fn skipNewlines(List<string> p, List<List<string>> tokens) {
+  while (peek(p, tokens) == "NEWLINE") {
+    advance(p, tokens)
+  }
+}
+
+// ─── PRIMARY ──────────────────────────────────────────────────────────────────
+
+fn parsePrimary(List<string> p, List<List<string>> tokens) int {
+
+  string t = peek(p, tokens)
+  string v = peekVal(p, tokens)
+
+  if (t == "INT") {
+    advance(p, tokens)
+    List<string> node
+    node.push("IntLiteral")
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "DOUBLE") {
+    advance(p, tokens)
+    List<string> node
+    node.push("FloatLiteral")
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "STRING") {
+    advance(p, tokens)
+    List<string> node
+    node.push("StringLiteral")
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "BOOLEAN") {
+    advance(p, tokens)
+    List<string> node
+    node.push("BoolLiteral")
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "IDENTIFIER") {
+    advance(p, tokens)
+    if (peek(p, tokens) == "SYM" && peekVal(p, tokens) == "(") {
+      return parseCallFromName(p, tokens, v)
+    }
+    List<string> node
+    node.push("Identifier")
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "SYM" && v == "(") {
+    advance(p, tokens)
+    int inner = parseExpr(p, tokens)
+    expect(p, tokens, "SYM", ")")
+    return inner
+  }
+
+  setperr(p, "Unexpected token: " + v)
+  List<string> err
+  err.push("Error")
+  err.push(v)
+  return arenaAdd(err)
+}
+
+// ─── CALL ─────────────────────────────────────────────────────────────────────
+
+fn parseCallFromName(List<string> p, List<List<string>> tokens, string name) int {
+  expect(p, tokens, "SYM", "(")
+
+  List<string> argIndices
+  skipNewlines(p, tokens)
+
+  if (!(peek(p, tokens) == "SYM" && peekVal(p, tokens) == ")")) {
+    int arg = parseExpr(p, tokens)
+    argIndices.push(String(arg))
+
+    while (peek(p, tokens) == "SYM" && peekVal(p, tokens) == ",") {
+      advance(p, tokens)
+      skipNewlines(p, tokens)
+      int nextArg = parseExpr(p, tokens)
+      argIndices.push(String(nextArg))
+    }
+  }
+
+  expect(p, tokens, "SYM", ")")
+
+  List<string> node
+  node.push("CallExpr")
+  node.push(name)
+  int argc = argIndices.length
+  node.push(String(argc))
+  int i = 0
+  while (i < argc) {
+    node.push(argIndices[i])
+    i = i + 1
+  }
+
+  return arenaAdd(node)
+}
+
+// ─── UNARY ────────────────────────────────────────────────────────────────────
+
+fn parseUnary(List<string> p, List<List<string>> tokens) int {
+  if (peek(p, tokens) == "OP" && peekVal(p, tokens) == "!") {
+    advance(p, tokens)
+    int operand = parsePrimary(p, tokens)
+    List<string> node
+    node.push("UnaryExpr")
+    node.push("!")
+    node.push(String(operand))
+    return arenaAdd(node)
+  }
+  if (peek(p, tokens) == "OP" && peekVal(p, tokens) == "-") {
+    advance(p, tokens)
+    int operand = parsePrimary(p, tokens)
+    List<string> node
+    node.push("UnaryExpr")
+    node.push("-")
+    node.push(String(operand))
+    return arenaAdd(node)
+  }
+  return parsePrimary(p, tokens)
+}
+
+// ─── BINARY ───────────────────────────────────────────────────────────────────
+
+fn precedence(string op) int {
+  if (op == "||") { return 1 }
+  if (op == "&&") { return 2 }
+  if (op == "==" || op == "!=") { return 3 }
+  if (op == "<" || op == ">" || op == "<=" || op == ">=") { return 4 }
+  if (op == "+" || op == "-") { return 5 }
+  if (op == "*" || op == "/" || op == "%") { return 6 }
+  return 0
+}
+
+fn parseBinary(List<string> p, List<List<string>> tokens, int minPrec) int {
+  int left = parseUnary(p, tokens)
+
+  while (true) {
+    if (peek(p, tokens) != "OP") { break }
+    string op = peekVal(p, tokens)
+    int prec = precedence(op)
+    if (prec <= minPrec) { break }
+    advance(p, tokens)
+    int right = parseBinary(p, tokens, prec)
+    List<string> node
+    node.push("BinaryExpr")
+    node.push(op)
+    node.push(String(left))
+    node.push(String(right))
+    left = arenaAdd(node)
+  }
+
+  return left
+}
+
+fn parseExpr(List<string> p, List<List<string>> tokens) int {
+  return parseBinary(p, tokens, 0)
+}
+
+// ─── ASSIGN ───────────────────────────────────────────────────────────────────
+
+fn parseAssign(List<string> p, List<List<string>> tokens, string name) int {
+  string op = peekVal(p, tokens)
+  advance(p, tokens)
+  int val = parseExpr(p, tokens)
+  List<string> node
+  node.push("Assign")
+  node.push(name)
+  node.push(op)
+  node.push(String(val))
+  return arenaAdd(node)
+}
+
+// ─── TYPE STRING ──────────────────────────────────────────────────────────────
+
+fn parseTypeStr(List<string> p, List<List<string>> tokens) string {
+  string base = peekVal(p, tokens)
+  advance(p, tokens)
+
+  if (peek(p, tokens) == "OP" && peekVal(p, tokens) == "<") {
+    advance(p, tokens)
+    string inner = parseTypeStr(p, tokens)
+    expect(p, tokens, "OP", ">")
+    return "List<" + inner + ">"
+  }
+
+  return base
+}
+
+// ─── IF ───────────────────────────────────────────────────────────────────────
+
+fn parseIf(List<string> p, List<List<string>> tokens) int {
+  advance(p, tokens)
+  expect(p, tokens, "SYM", "(")
+  int cond = parseExpr(p, tokens)
+  expect(p, tokens, "SYM", ")")
+  int body = parseBlock(p, tokens)
+
+  List<string> node
+  node.push("If")
+  node.push(String(cond))
+  node.push(String(body))
+
+  skipNewlines(p, tokens)
+
+  if (peek(p, tokens) == "KEYWORD" && peekVal(p, tokens) == "else") {
+    advance(p, tokens)
+    skipNewlines(p, tokens)
+    if (peek(p, tokens) == "KEYWORD" && peekVal(p, tokens) == "if") {
+      int elif = parseIf(p, tokens)
+      node.push(String(elif))
+    } else {
+      int elseBody = parseBlock(p, tokens)
+      node.push(String(elseBody))
+    }
+  } else {
+    node.push("-1")
+  }
+
+  return arenaAdd(node)
+}
+
+// ─── WHILE ────────────────────────────────────────────────────────────────────
+
+fn parseWhile(List<string> p, List<List<string>> tokens) int {
+  advance(p, tokens)
+  expect(p, tokens, "SYM", "(")
+  int cond = parseExpr(p, tokens)
+  expect(p, tokens, "SYM", ")")
+  int body = parseBlock(p, tokens)
+
+  List<string> node
+  node.push("While")
+  node.push(String(cond))
+  node.push(String(body))
+  return arenaAdd(node)
+}
+
+// ─── BLOCK ────────────────────────────────────────────────────────────────────
+
+fn parseBlock(List<string> p, List<List<string>> tokens) int {
+  expect(p, tokens, "SYM", "{")
+  skipNewlines(p, tokens)
+
+  List<string> stmtIndices
+
+  while (!(peek(p, tokens) == "SYM" && peekVal(p, tokens) == "}")) {
+    if (peek(p, tokens) == "EOF") { break }
+    int stmt = parseStatement(p, tokens)
+    stmtIndices.push(String(stmt))
+    skipNewlines(p, tokens)
+  }
+
+  expect(p, tokens, "SYM", "}")
+
+  List<string> node
+  node.push("Block")
+  int sc = stmtIndices.length
+  node.push(String(sc))
+  int i = 0
+  while (i < sc) {
+    node.push(stmtIndices[i])
+    i = i + 1
+  }
+
+  return arenaAdd(node)
+}
+
+// ─── STATEMENT ────────────────────────────────────────────────────────────────
+
+fn parseStatement(List<string> p, List<List<string>> tokens) int {
+  skipNewlines(p, tokens)
+  string t = peek(p, tokens)
+  string v = peekVal(p, tokens)
+
+  if (t == "KEYWORD" && v == "return") {
+    advance(p, tokens)
+    int val = parseExpr(p, tokens)
+    List<string> node
+    node.push("Return")
+    node.push(String(val))
+    return arenaAdd(node)
+  }
+
+  if (t == "KEYWORD" && v == "if") {
+    return parseIf(p, tokens)
+  }
+
+  if (t == "KEYWORD" && v == "while") {
+    return parseWhile(p, tokens)
+  }
+
+  if (t == "KEYWORD" && (v == "break" || v == "continue")) {
+    advance(p, tokens)
+    List<string> node
+    node.push(v)
+    return arenaAdd(node)
+  }
+
+  if (t == "TYPE") {
+    string typeName = parseTypeStr(p, tokens)
+    string name = peekVal(p, tokens)
+    advance(p, tokens)
+
+    if (peek(p, tokens) == "OP" && peekVal(p, tokens) == "=") {
+      advance(p, tokens)
+      int init = parseExpr(p, tokens)
+      List<string> node
+      node.push("VarDecl")
+      node.push(name)
+      node.push(typeName)
+      node.push(String(init))
+      return arenaAdd(node)
+    }
+
+    List<string> node
+    node.push("VarDecl")
+    node.push(name)
+    node.push(typeName)
+    node.push("-1")
+    return arenaAdd(node)
+  }
+
+  if (t == "IDENTIFIER") {
+    string name = v
+    advance(p, tokens)
+
+    if (peek(p, tokens) == "OP") {
+      string op = peekVal(p, tokens)
+      if (op == "=" || op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=") {
+        return parseAssign(p, tokens, name)
+      }
+    }
+
+    if (peek(p, tokens) == "SYM" && peekVal(p, tokens) == "(") {
+      return parseCallFromName(p, tokens, name)
+    }
+  }
+
+  if (t == "KEYWORD" && v == "fn") {
+    return parseFn(p, tokens)
+  }
+
+  return parseExpr(p, tokens)
+}
+
+// ─── FUNCTION ─────────────────────────────────────────────────────────────────
+
+fn parseFn(List<string> p, List<List<string>> tokens) int {
+  advance(p, tokens)
+
+  string name = peekVal(p, tokens)
+  advance(p, tokens)
+
+  expect(p, tokens, "SYM", "(")
+
+  List<string> paramIndices
+  skipNewlines(p, tokens)
+
+  if (!(peek(p, tokens) == "SYM" && peekVal(p, tokens) == ")")) {
+    string pt = parseTypeStr(p, tokens)
+    string pn = peekVal(p, tokens)
+    advance(p, tokens)
+    List<string> param
+    param.push("Param")
+    param.push(pn)
+    param.push(pt)
+    paramIndices.push(String(arenaAdd(param)))
+
+    while (peek(p, tokens) == "SYM" && peekVal(p, tokens) == ",") {
+      advance(p, tokens)
+      skipNewlines(p, tokens)
+      string pt2 = parseTypeStr(p, tokens)
+      string pn2 = peekVal(p, tokens)
+      advance(p, tokens)
+      List<string> param2
+      param2.push("Param")
+      param2.push(pn2)
+      param2.push(pt2)
+      paramIndices.push(String(arenaAdd(param2)))
+    }
+  }
+
+  expect(p, tokens, "SYM", ")")
+
+  string retType = parseTypeStr(p, tokens)
+  int body = parseBlock(p, tokens)
+
+  List<string> node
+  node.push("FnDecl")
+  node.push(name)
+  node.push(retType)
+  int pc = paramIndices.length
+  node.push(String(pc))
+  int i = 0
+  while (i < pc) {
+    node.push(paramIndices[i])
+    i = i + 1
+  }
+  node.push(String(body))
+  return arenaAdd(node)
+}
+
+// ─── PROGRAM ──────────────────────────────────────────────────────────────────
+
+fn parse(List<List<string>> tokens) List<List<string>> {
+  List<string> p = parserNew()
+  List<string> stmtIndices
+
+  while (peek(p, tokens) != "EOF") {
+    skipNewlines(p, tokens)
+    if (peek(p, tokens) == "EOF") { break }
+
+    string t = peek(p, tokens)
+    string v = peekVal(p, tokens)
+    int stmt = -1
+
+    if (t == "KEYWORD" && v == "fn") {
+      stmt = parseFn(p, tokens)
+    } else {
+      stmt = parseStatement(p, tokens)
+    }
+
+    stmtIndices.push(String(stmt))
+  }
+
+  List<string> prog
+  prog.push("Program")
+  int sc = stmtIndices.length
+  prog.push(String(sc))
+  int i = 0
+  while (i < sc) {
+    prog.push(stmtIndices[i])
+    i = i + 1
+  }
+
+  arenaAdd(prog)
+  return arena
+}
+
+
+  
+  
+    
+  
+  
+    
+  
+    
+  
+ 
+
+// ─── TEST ─────────────────────────────────────────────────────────────────────
+
+List<List<string>> tokens = tokenize(
+`fn add(int a, int b) int {
+  int result = a + b * 2
+  return result
+}
+
+int x = add(10, 20)`
+)
+
+List<List<string>> ast = parse(tokens)
+
+fn printNode(int idx, int depth) {
+
+  List<string> node = arenaGet(idx)
+  string type = node[0]
+
+  int i = 0
+  while (i < depth) {
+    screen("  ")
+    i = i + 1
+  }
+
+  screen(type)
+
+  if (type == "Program") {
+    int count = Int(node[1])
+    int j = 0
+    int base = 2
+    while (j < count) {
+      printNode(Int(node[base + j]), depth + 1)
+      j = j + 1
+    }
+  }
+
+  else if (type == "FnDecl") {
+    screen(" " + node[1]) // name
+
+    int pc = Int(node[3])
+    int k = 0
+    int base = 4
+
+    while (k < pc) {
+      printNode(Int(node[base + k]), depth + 1)
+      k = k + 1
+    }
+
+    printNode(Int(node[base + pc]), depth + 1) // body
+  }
+
+  else if (type == "Block") {
+    int sc = Int(node[1])
+    int k = 0
+    int base = 2
+
+    while (k < sc) {
+      printNode(Int(node[base + k]), depth + 1)
+      k = k + 1
+    }
+  }
+
+  else if (type == "VarDecl") {
+    screen(" " + node[1] + " : " + node[2])
+
+    if (node[3] != "-1") {
+      printNode(Int(node[3]), depth + 1)
+    }
+  }
+
+  else if (type == "Return") {
+    screen("")
+    printNode(Int(node[1]), depth + 1)
+  }
+
+  else if (type == "BinaryExpr") {
+    screen(" " + node[1])
+    printNode(Int(node[2]), depth + 1)
+    printNode(Int(node[3]), depth + 1)
+  }
+
+  else if (type == "CallExpr") {
+    screen(" " + node[1])
+
+    int argc = Int(node[2])
+    int k = 0
+    int base = 3
+
+    while (k < argc) {
+      printNode(Int(node[base + k]), depth + 1)
+      k = k + 1
+    }
+  }
+
+  else if (type == "Identifier" || type == "IntLiteral" ||
+           type == "FloatLiteral" || type == "StringLiteral") {
+    screen(" " + node[1])
+  }
+}
+
+printNode(0, 0)

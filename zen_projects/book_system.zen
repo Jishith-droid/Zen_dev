@@ -5,13 +5,13 @@
 List<string> books = []
 List<bool> isAvailable = []
 
-int n = input("Enter number of books:")
+int n = trim(Int(input("Enter number of books: ")))
 
 int i = 0
 
 while (i < n) {
 
-  string name = input("Enter book name")
+  string name = input("Enter book name: ")
 
   books.push(name)
   isAvailable.push(true)
@@ -34,12 +34,12 @@ while (choice != 0) {
   screen("3. Show Books")
   screen("0. Exit")
 
-  choice = input("Enter choice:")
+  choice = trim(Int(input("Enter choice:")))
 
   // BORROW
   if (choice == 1) {
 
-    string b = input("Enter book name to borrow")
+    string b = input("Enter book name to borrow: ")
 
     int j = 0
     bool found = false
@@ -65,7 +65,7 @@ while (choice != 0) {
   // RETURN
   else if (choice == 2) {
 
-    string b = input("Enter book name to return")
+    string b = input("Enter book name to return: ")
 
     int j = 0
     bool found = false

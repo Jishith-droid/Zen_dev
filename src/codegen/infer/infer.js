@@ -231,11 +231,7 @@ export class InferType {
             this.IRB.getFunction(fullMethodName);
           
           if (!fn) {
-            this.IRB.emitError(
-              "ReferenceError",
-              `Method '${fullMethodName}' not found`,
-              node
-            );
+            this.IRB.emitError("ReferenceError", `Method '${fullMethodName}' is not defined`, node)
           }
           
           node.inferredType =
@@ -251,11 +247,7 @@ export class InferType {
             this.IRB.getFunction(node.name);
           
           if (!fn) {
-            this.IRB.emitError(
-              "ReferenceError",
-              `Function '${node.name}' not found`,
-              node
-            );
+            this.IRB.emitError("ReferenceError", `Function '${node.name}' is not defined`, node)
           }
           
           node.inferredType =
@@ -283,11 +275,7 @@ export class InferType {
           const currentType = this.infer(el);
           
           if (currentType !== firstType) {
-            this.IRB.emitError(
-              "TypeError",
-              `Array element type mismatch '${currentType}' != '${firstType}'`,
-              node
-            );
+            this.IRB.emitError("TypeError", `Array element type mismatch — expected '${firstType}', got '${currentType}'`, node)
           }
         }
         
@@ -340,19 +328,11 @@ export class InferType {
         if (["&&", "||"].includes(op)) {
           
           if (leftType !== "bool") {
-            this.IRB.emitError(
-              "TypeError",
-              `Logical operator '${op}' requires boolean left operand`,
-              node
-            );
+            this.IRB.emitError("TypeError", `Logical operator '${op}' requires operands of type 'bool'`, node)
           }
           
           if (rightType !== "bool") {
-            this.IRB.emitError(
-              "TypeError",
-              `Logical operator '${op}' requires boolean right operand`,
-              node
-            );
+            this.IRB.emitError("TypeError", `Logical operator '${op}' requires operands of type 'bool'`, node)
           }
           
           node.inferredType = "bool";
@@ -360,11 +340,7 @@ export class InferType {
           return "bool";
         }
         
-        this.IRB.emitError(
-          "SyntaxError",
-          `Unknown operator '${op}'`,
-          node
-        );
+        this.IRB.emitError("SyntaxError", `Unknown operator '${op}'`, node)
       }
       
       // UNARY EXPRESSION

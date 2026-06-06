@@ -1,4 +1,5 @@
 import { ParserTypes, BUILTIN_FUNCTIONS, TYPES } from '/src/config/config.js';
+import { Lexer } from '/src/lexer/lexer.js';
 
 export class Parser {
   constructor(tokens, IRB) {
@@ -103,7 +104,7 @@ export class Parser {
   // STATEMENTS
   
   parseStatement() {
-    if (this.match("TYPE") || this.matchKeyword("auto")) {
+    if (this.match("TYPE") || this.matchKeyword("auto") || this.matchKeyword("reactive")) {
       return this.node(this.parseVariableDeclaration());
     }
     
@@ -288,8 +289,15 @@ export class Parser {
       !this.match("EOF")
     ) {
       
-      const key =
-        this.expect("IDENTIFIER").value;
+      let key;
+      
+      if (this.match("IDENTIFIER")) {
+        key = this.expect("IDENTIFIER").value;
+      } else if (this.match("string")) {
+        key = this.expect("string").value;
+      } else {
+        this.IRB.emitError("SyntaxError", "Expected identifier or string as object key");
+      }
       
       let index = null;
       
@@ -603,10 +611,22 @@ export class Parser {
     
     else {
       
-      value = this.node({
+      const depth = this.IRB.getListDepth(generic);
+      
+      let result = this.node({
         type: ParserTypes.ARRAY,
         elements: []
       });
+      
+      for (let i = 1; i < depth; i++) {
+        result = this.node({
+          type: ParserTypes.ARRAY,
+          elements: [result]
+        });
+      }
+      
+      value = result;
+      
     }
     
     return this.node({
@@ -722,14 +742,14 @@ export class Parser {
     if (this.matchKeyword("List")) {
       return this.parseListGeneric();
     }
-      if (this.matchKeyword("Map")) {
-        this.advance();
-        
-        return {
-          type: "Map",
-          dimensions: []
-        };
-      }
+    if (this.matchKeyword("Map")) {
+      this.advance();
+      
+      return {
+        type: "Map",
+        dimensions: []
+      };
+    }
     
     let baseType;
     
@@ -816,6 +836,7 @@ export class Parser {
         dimensions: t.dimensions,
         isRest
       };
+      this.skipNewlines()
       if (isRest && !this.match("RIGHT_PARENTHESIS")) {
         this.IRB.emitError("SyntaxError",
           `rest ${name} parameter must be last`, this.lineAndColumn()
@@ -987,7 +1008,7 @@ export class Parser {
     if (this.match("COMMA")) {
       
       this.advance();
-
+      
       let third = this.parseExpression();
       
       init = first;
@@ -1103,6 +1124,12 @@ export class Parser {
   }
   
   parseVariableDeclaration() {
+    
+    let haveReactive = false;
+    if (this.matchKeyword("reactive")) {
+      haveReactive = true;
+      this.advance()
+    }
     const dataType = this.advance().value;
     
     let isConst = false;
@@ -1221,6 +1248,7 @@ export class Parser {
       type: ParserTypes.VARIABLE_DECLARATION,
       dataType,
       inferredType,
+      isReactive: haveReactive,
       isArray: dimensions.length > 0,
       isConstant: isConst,
       name,
@@ -1414,7 +1442,6 @@ export class Parser {
   
   parseUnary() {
     if (
-      this.match("PLUS") ||
       this.match("MINUS") ||
       this.match("BANG") ||
       this.match("PLUS_PLUS") ||
@@ -1613,6 +1640,18 @@ export class Parser {
       });
     }
     
+    if (token.type === "TEMPLATE_STRING") {
+      
+      this.advance();
+      
+      return this.node({
+        type: "TEMPLATE_LITERAL",
+        parts: this.parseTemplateParts(
+          token.value
+        )
+      });
+    }
+    
     if (this.matchKeyword("this")) {
       this.advance();
       
@@ -1681,6 +1720,31 @@ export class Parser {
       `Unexpected token '${token.value}'`,
       this.lineAndColumn()
     );
+  }
+  
+  
+  parseTemplateParts(parts) {
+    
+    return parts.map(part => {
+      
+      if (typeof part === "string") {
+        return part;
+      }
+      
+      const lexer = new Lexer(
+        part.value,
+        this.IRB
+      );
+      
+      const tokens = lexer.tokenize();
+      
+      const parser = new Parser(
+        tokens,
+        this.IRB
+      );
+      
+      return parser.parse();
+    });
   }
   
   

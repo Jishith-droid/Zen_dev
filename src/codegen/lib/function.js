@@ -126,9 +126,8 @@ export class HandleFunction {
       const fn = this.IRB.getFunction(name);
       
       // update return type
-      console.log(fn)
-      fn.returnType = {}
-      fn.returnType.type = retType;
+      
+      fn.returnType = retType;
       
       this.IRB.currentFunction.returnType = retType;
       
@@ -158,7 +157,7 @@ export class HandleFunction {
     
     if (expr.llvmType?.startsWith("[")) {
       this.IRB.emitError(
-        "SemanticError",
+        "TypeError",
         `function ${name} cannot return array`, node)
     }
     
@@ -327,13 +326,15 @@ export class HandleFunction {
         }));
       } else if (p?.isMethod) {
         // update symbol table
+        
         this.IRB.setVar(p.name, this.IRB.createData({
-          ptr: p.name,
+          ptr: p.ptr,
           llvmType: p.llvmType,
           type: p.type,
           isConstant: false,
           isGlobal: false,
-          fromParam: true
+          fromParam: true,
+          isStruct: true
         }));
       } else if (p.isRest) {
         
@@ -344,7 +345,7 @@ export class HandleFunction {
         // update symbol table
         this.IRB.setVar(p.name, this.IRB.createData({
           ptr: p.ptr,
-          llvmType: "ZenList",
+          llvmType: "%ZenList*",
           type: p.type,
           generic: { generic: { type: p.type } },
           isConstant: false,
