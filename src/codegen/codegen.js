@@ -1,6 +1,6 @@
 import { IRBuilder } from './helper/helper.js';
-import { Conditional } from '/src/codegen/lib/conditional.js';
-import { Block } from '/src/codegen/lib/block.js';
+import { Conditional } from './lib/conditional.js';
+import { Block } from './lib/block.js';
 import { Variable } from './lib/variable.js';
 import { Loop } from './lib/loop.js';
 import { Ternary } from './lib/ternary.js';
@@ -18,12 +18,21 @@ import { ZenSys } from './lib/builtins/sys/sys.js';
 import { OS } from './lib/builtins/os/os.js';
 import { Time } from './lib/builtins/time/time.js';
 import { ZenNetwork } from './lib/builtins/network/network.js';
-import { InferType } from '/src/codegen/infer/infer.js';
+import { InferType } from './infer/infer.js';
 import { ZenFileSystem } from './lib/builtins/fileSystem/file.js';
 import { IO } from './lib/builtins/io/io.js';
 import { ZenString } from './lib/builtins/string/string.js';
 
-import { SCALAR_TYPES, VOID_BUILTIN_FUNCTIONS, GLOBAL_EXTERNAL, STD_FUNCTIONS_SCHEMA, BUILTIN_FUNCTIONS, BUILTIN_MAP, RESERVED_FUNCTIONS, COMPOUND_OPERATORS } from '/src/config/config.js';
+import {
+  SCALAR_TYPES,
+  VOID_BUILTIN_FUNCTIONS,
+  GLOBAL_EXTERNAL,
+  STD_FUNCTIONS_SCHEMA,
+  BUILTIN_FUNCTIONS,
+  BUILTIN_MAP,
+  RESERVED_FUNCTIONS,
+  COMPOUND_OPERATORS
+} from '../config/config.js';
 
 export class CodeGen {
   constructor(ast) {

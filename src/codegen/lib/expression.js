@@ -1,4 +1,13 @@
-import { LOGICAL_OPS, COMPARISON_OPS, OP_CODES, LOOKUP, cmpMap, fcmpMap, NAMESPACE_MAP, SCALAR_TYPES } from '/src/config/config.js';
+import {
+  LOGICAL_OPS,
+  COMPARISON_OPS,
+  OP_CODES,
+  LOOKUP,
+  cmpMap,
+  fcmpMap,
+  NAMESPACE_MAP,
+  SCALAR_TYPES
+} from "../../config/config.js";
 
 export class Expression {
   constructor(IRB) {

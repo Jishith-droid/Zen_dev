@@ -1,4 +1,4 @@
-import { SCALAR_TYPES } from '/src/config/config.js';
+import { SCALAR_TYPES } from "../../config/config.js";
 
 export class Loop {
   constructor(IRB, expr, variable, block) {

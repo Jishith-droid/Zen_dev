@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import fs from "fs";
-import { Lexer } from "./src/lexer/lexer.js";
-import { Parser } from "./src/parser/parser.js";
-import { CodeGen } from "./src/codegen/codegen.js";
-import { IRBuilder } from "./src/codegen/helper/helper.js";
+import { Lexer } from "../src/lexer/lexer.js";
+import { Parser } from "../src/parser/parser.js";
+import { CodeGen } from "../src/codegen/codegen.js";
+import { IRBuilder } from "../src/codegen/helper/helper.js";
 
 const file = process.argv[2];
 

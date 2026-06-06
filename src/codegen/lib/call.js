@@ -1,4 +1,13 @@
-import { NON_STANDALONE_BUILTINS, OS_MAP, FILE_MAP, TIME_MAP, NETWORK_MAP, SYS_MAP, HTTP_MAP, STD_FUNCTIONS } from '/src/config/config.js';
+import {
+  NON_STANDALONE_BUILTINS,
+  OS_MAP,
+  FILE_MAP,
+  TIME_MAP,
+  NETWORK_MAP,
+  SYS_MAP,
+  HTTP_MAP,
+  STD_FUNCTIONS
+} from "../../config/config.js";
 
 export class Call {
   constructor(IRB, expr, io, type, string, file, os, time, network, http, sys) {

@@ -1,4 +1,10 @@
-import { LLVM_TYPES_MAP, ZEN_TYPES_MAP, STD_FUNCTIONS_SCHEMA, GLOBAL_EXTERNAL, COMPOUND_OPERATORS } from '/src/config/config.js';
+import {
+  LLVM_TYPES_MAP,
+  ZEN_TYPES_MAP,
+  STD_FUNCTIONS_SCHEMA,
+  GLOBAL_EXTERNAL,
+  COMPOUND_OPERATORS
+} from "../../config/config.js";
 
 export class IRBuilder {
   constructor() {

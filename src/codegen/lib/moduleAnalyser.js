@@ -1,6 +1,6 @@
-import { Lexer } from '/src/lexer/lexer.js';
-import { Parser } from '/src/parser/parser.js';
-import { CodeGen } from '/src/codegen/codegen.js';
+import { Lexer } from "../../lexer/lexer.js";
+import { Parser } from "../../parser/parser.js";
+import { CodeGen } from "../codegen.js";
 import fs from "fs";
 import path from "path";
 

@@ -1,4 +1,4 @@
-  import { TYPES, STD_FUNCTIONS } from '/src/config/config.js';
+  import { TYPES, STD_FUNCTIONS } from "../../config/config.js";
   
   export class Variable {
     constructor(IRB, expr, call, infer, struct) {

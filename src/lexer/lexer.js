@@ -1,4 +1,15 @@
-import { TYPES, TokenTypes, KEYWORDS, BUILTIN_FUNCTIONS, OPERATORS, ASSIGNMENT_OPS, ARITHMETIC_OPS, UNARY_OPS, COMPARISON_OPS, LOGICAL_OPS } from '/src/config/config.js';
+import {
+  TYPES,
+  TokenTypes,
+  KEYWORDS,
+  BUILTIN_FUNCTIONS,
+  OPERATORS,
+  ASSIGNMENT_OPS,
+  ARITHMETIC_OPS,
+  UNARY_OPS,
+  COMPARISON_OPS,
+  LOGICAL_OPS
+} from "../config/config.js";
 
 const SORTED_OPERATORS = [...OPERATORS]
   .sort((a, b) => b.length - a.length);

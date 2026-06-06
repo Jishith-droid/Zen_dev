@@ -1,5 +1,5 @@
-import { ParserTypes, BUILTIN_FUNCTIONS, TYPES } from '/src/config/config.js';
-import { Lexer } from '/src/lexer/lexer.js';
+import { ParserTypes, BUILTIN_FUNCTIONS, TYPES } from "../config/config.js";
+import { Lexer } from "../lexer/lexer.js";
 
 export class Parser {
   constructor(tokens, IRB) {
