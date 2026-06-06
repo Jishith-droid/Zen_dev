@@ -447,6 +447,30 @@ export class Lexer {
     let result = '';
     let hasDot = false;
     
+       // HEX
+    if (
+      this.currentChar === '0' &&
+      this.peek() === 'x'
+    ) {
+      this.advance() // skip 0
+      this.advance() // skip x
+      let hex = ''
+      while (
+        this.currentChar !== null &&
+        /[0-9a-fA-F]/.test(this.currentChar)
+      ) {
+        hex += this.currentChar
+        this.advance()
+      }
+      if (hex.length === 0) {
+        this.IRB.emitError("SyntaxError", "Invalid hex literal", this.lineAndColumn())
+      }
+      return {
+        value: parseInt(hex, 16),
+        isFloat: false
+      }
+    }
+    
     while (
       this.currentChar !== null &&
       (/\d/.test(this.currentChar) || this.currentChar === '.')

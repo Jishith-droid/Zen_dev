@@ -14,6 +14,10 @@ fn isNegative(int x) bool {
     return x < 0
 }
 
+fn isNaN(double x) bool {
+    return x != x
+}
+
 fn abs(int x) int {
     if (x < 0) return 0 - x
     return x
@@ -315,6 +319,44 @@ fn replace(string s, string target, string repl) string {
 
     if (tlen == 0) return s
 
+    int i = 0
+    while (i <= len - tlen) {
+        bool match = true
+        int j = 0
+        while (j < tlen) {
+            if (s[i + j] != target[j]) {
+                match = false
+            }
+            j = j + 1
+        }
+        if (match) {
+            string out = ""
+            int k = 0
+            while (k < i) {
+                out = out + s[k]
+                k = k + 1
+            }
+            out = out + repl
+            int rlen = length(repl)
+            k = i + tlen
+            while (k < len) {
+                out = out + s[k]
+                k = k + 1
+            }
+            return out
+        }
+        i = i + 1
+    }
+
+    return s
+}
+
+fn replaceAll(string s, string target, string repl) string {
+    int len = length(s)
+    int tlen = length(target)
+
+    if (tlen == 0) return s
+
     string out = ""
     int i = 0
 
@@ -334,12 +376,7 @@ fn replace(string s, string target, string repl) string {
         }
 
         if (match) {
-            int k = 0
-            int rlen = length(repl)
-            while (k < rlen) {
-                out = out + repl[k]
-                k = k + 1
-            }
+            out = out + repl
             i = i + tlen
         } else {
             out = out + s[i]
@@ -1249,8 +1286,47 @@ fn json(string data, string path) string {
             bi = closePos + 1
         }
 
-        i = i + 1
+        i += 1
     }
 
     return current
+}
+
+fn split(string s, string delim) List<string> {
+    List<string> out = []
+    int len = length(s)
+    int dlen = length(delim)
+
+    if (dlen == 0) return out
+
+    string current 
+    int i
+
+    while (i < len) {
+        bool match = true
+        int j = 0
+
+        if (i <= len - dlen) {
+            while (j < dlen) {
+                if (s[i + j] != delim[j]) {
+                    match = false
+                }
+                j += 1
+            }
+        } else {
+            match = false
+        }
+
+        if (match) {
+            out.push(current)
+            current = ""
+            i += dlen
+        } else {
+            current += s[i]
+            i += 1
+        }
+    }
+
+    out.push(current)
+    return out
 }

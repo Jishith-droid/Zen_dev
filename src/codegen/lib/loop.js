@@ -376,8 +376,7 @@ export class Loop {
       this.IRB.emit(
         `${valTmp} = call ptr @zen_list_get(ptr ${tm}, i32 ${idxTmp})`
       );
-      
-      
+  
       const nextGeneric =
         expr.generic?.generic ?? expr.generic;
       

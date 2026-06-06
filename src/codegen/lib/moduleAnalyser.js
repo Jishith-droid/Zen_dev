@@ -19,9 +19,9 @@ export class Module {
   // TEMP browser simulation
   loadFile(source) {
     return `
-    int const a = 10
-    int b = 20
-    export (a, b)
+    string arr[2] = ["Hello", "zen"]
+    string name = "Jishith"
+export(arr, name)
     `;
   }
   
@@ -279,20 +279,91 @@ export class Module {
   
   buildParams(params) {
     
-    const out = [];
+    const paramStr = [];
+    const paramData = [];
     
     for (const p of params) {
+      const temp = this.IRB.newTemp();
       
-      if (p?.isRest) {
-        return `(...)`;
+      // REST PARAM
+      
+      if (p.isRest) {
+        
+        
+        paramStr.push(`%ZenList* ${temp}`);
+        
+        paramData.push({
+          ptr: temp,
+          name: p.name,
+          type: p.type.type,
+          llvmType: "ptr",
+          isRest: true
+        });
+        
+        continue;
       }
       
-      out.push(
-        this.IRB.getLLVMType(p.type)
-      );
+      if (p.type.type === "List") {
+        paramStr.push(`%ZenList* ${temp}`);
+        
+        paramData.push({
+          ptr: temp,
+          name: p.name,
+          type: p.type.generic.type,
+          generic: { generic: p.type.generic },
+          llvmType: "%ZenList*",
+          isList: true
+        });
+        
+        continue;
+      }
+      
+      if (p.type.type === "Map") {
+        paramStr.push(`ptr  ${temp}`);
+        
+        paramData.push({
+          ptr: temp,
+          name: p.name,
+          type: "ptr",
+          llvmType: "ptr",
+          isMap: true
+        });
+        
+        continue;
+      }
+      
+      // ARRAY CHECK (use type tree safely)
+      
+      const isArray =
+        p.type?.dimensions?.length > 0;
+      
+      if (isArray) {
+        this.IRB.emitError("TypeError", `Fixed-size arrays cannot be passed as function parameters`)
+      }
+      
+      // FLATTEN TYPE → LLVM TYPE
+      
+      const llvmType = this.IRB.getLLVMType(p.type.type);
+      
+      paramStr.push(`${llvmType} ${temp}`);
+      
+      paramData.push({
+        name: p.name,
+        
+        // incoming SSA value
+        temp,
+        
+        // LLVM type (flat)
+        llvmType,
+        
+        // FULL TYPE TREE (IMPORTANT)
+        type: p.type.type,
+        
+        ptr: null
+      });
     }
     
-    return `(${out.join(", ")})`;
+    return `(${paramStr.join(", ")})`
   }
   
   // browser simulation

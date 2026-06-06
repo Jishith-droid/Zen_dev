@@ -44,6 +44,7 @@ export class IRBuilder {
     this.formatMap = this.formatMap || new Map(); // format for screen() 
     
     this.tempCount = 0; // main counter
+    this.globalTempCount = 0; // global counter
     this.labelCount = 0;
     this.strCount = 0;
     
@@ -449,11 +450,11 @@ export class IRBuilder {
   }
   
   newGlobalTemp() {
-    return `@t${this.tempCount++}`;
+    return `@t${this.exported ? ".e" : ""}${this.globalTempCount++}`;
   }
   
   strTemp() {
-    return `@.str${this.stdlibMode ? "_stdlib" : ""}${this.strCount++}`;
+    return `@.str${this.exported ? ".e" : ""}${this.stdlibMode ? "_stdlib" : ""}${this.strCount++}`;
   }
   
   newLabel(name = "label") {
@@ -754,6 +755,7 @@ export class IRBuilder {
   }
   
   buildParams(params, isMethod = false, node) {
+    
     const paramStr = [];
     const paramData = [];
     
@@ -890,9 +892,9 @@ export class IRBuilder {
         this.newTemp();
       
       const ir = `getelementptr inbounds ` +
-        `[${cached.len} x i8], ` +
+        `([${cached.len} x i8], ` +
         `[${cached.len} x i8]* ${cached.globalName}, ` +
-        `i32 0, i32 0`;
+        `i32 0, i32 0)`;
       
       this.emit(`${tmp} = ${ir}`);
       
@@ -926,9 +928,9 @@ export class IRBuilder {
       this.newTemp();
     
     const ir = `getelementptr inbounds ` +
-      `[${len} x i8], ` +
+      `([${len} x i8], ` +
       `[${len} x i8]* ${globalName}, ` +
-      `i32 0, i32 0`;
+      `i32 0, i32 0)`;
     
     this.emit(`${tmp} = ${ir}`);
     
