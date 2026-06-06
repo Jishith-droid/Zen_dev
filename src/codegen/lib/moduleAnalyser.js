@@ -1,6 +1,8 @@
 import { Lexer } from '/src/lexer/lexer.js';
 import { Parser } from '/src/parser/parser.js';
 import { CodeGen } from '/src/codegen/codegen.js';
+import fs from "fs";
+import path from "path";
 
 export class Module {
   constructor(IRB) {
@@ -15,15 +17,10 @@ export class Module {
     // generated .ll files
     this.generatedModules = new Map();
   }
-  
-  // TEMP browser simulation
-  loadFile(source) {
-    return `
-    string arr[2] = ["Hello", "zen"]
-    string name = "Jishith"
-export(arr, name)
-    `;
-  }
+
+loadFile(source) {
+  return fs.readFileSync(source, "utf8");
+}
   
   // MAIN ENTRY
   moduleAnalyser(node) {
@@ -366,25 +363,11 @@ export(arr, name)
     return `(${paramStr.join(", ")})`
   }
   
-  // browser simulation
-  writeLLFile(source, llvm) {
-    
-    const blob = new Blob(
-      [llvm], { type: "text/plain" }
-    );
-    
-    const url =
-      URL.createObjectURL(blob);
-    
-    const a =
-      document.createElement("a");
-    
-    a.href = url;
-    
-    a.download =
-      source.replace(".zen", ".ll");
-    
-    URL.revokeObjectURL(url);
-  }
+writeLLFile(source, llvm) {
+  const outFile =
+    source.replace(/\.zen$/, ".ll");
+
+  fs.writeFileSync(outFile, llvm);
+}
   
 }
