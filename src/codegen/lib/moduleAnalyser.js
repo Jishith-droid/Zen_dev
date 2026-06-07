@@ -50,10 +50,18 @@ loadFile(source) {
     const ast = parser.parse();
     
     // 4. separate compilation
-    const moduleCodegen = new CodeGen(ast, this.IRB);
+const moduleName = path.basename(source, '.zen');
+this.IRB.globalTempCount = 0;
+this.IRB.strCount = 0;
+this.IRB.formatMap = new Map(); // reset screen string cache too
+
+    const moduleCodegen = new CodeGen(ast, moduleName);
     
     const { ir, symbolTable, functionTable } = moduleCodegen.generateLLVM();
-        
+    this.IRB.moduleName = "main";
+this.IRB.globalTempCount = 0;
+this.IRB.strCount = 0;
+this.IRB.formatMap = new Map();    
     // store generated llvm
     this.generatedModules.set(
       source,

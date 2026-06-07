@@ -1,4 +1,5 @@
 ## Error Reference
+modified
 
 Zen reports errors in a consistent structured format. Compile-time errors include the source location. Runtime errors include only the error message — location information is not available at runtime.
 

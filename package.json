@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "zen": "./bin/zen.js"
+    "zen": "bin/zen.js"
   }
 }

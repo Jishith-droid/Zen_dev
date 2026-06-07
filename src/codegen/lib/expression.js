@@ -66,6 +66,7 @@ export class Expression {
       return {
         ptr: data.name,
         ir: data.ir, // direct ir for module linking 
+        symbol: data?.symbol, 
         type: "string",
         llvmType: "i8*",
         length: data.length,

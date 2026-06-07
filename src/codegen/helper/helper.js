@@ -7,13 +7,15 @@ import {
 } from "../../config/config.js";
 
 export class IRBuilder {
-  constructor() {
+  constructor(moduleName) {
     this.globals = [];
     this.locals = [];
     this.functionBuff = [];
     
     this.currentFunction = null;
     this.functions = new Map();
+    
+    this.moduleName = moduleName;
     
     this.returnCount = 0;
     this.returnTypes = [];
@@ -456,12 +458,12 @@ export class IRBuilder {
   }
   
   newGlobalTemp() {
-    return `@t${this.exported ? ".e" : ""}${this.globalTempCount++}`;
-  }
-  
-  strTemp() {
-    return `@.str${this.exported ? ".e" : ""}${this.stdlibMode ? "_stdlib" : ""}${this.strCount++}`;
-  }
+  return `@t${this.exported ? ".e" : ""}_${this.moduleName}_${this.globalTempCount++}`;
+}
+
+strTemp() {
+  return `@.str${this.exported ? ".e" : ""}${this.stdlibMode ? "_stdlib" : ""}_${this.moduleName}_${this.strCount++}`;
+}
   
   newLabel(name = "label") {
     return `${name}${this.labelCount++}`;
@@ -897,10 +899,7 @@ export class IRBuilder {
       const tmp =
         this.newTemp();
       
-      const ir = `getelementptr inbounds ` +
-        `([${cached.len} x i8], ` +
-        `[${cached.len} x i8]* ${cached.globalName}, ` +
-        `i32 0, i32 0)`;
+      const ir = `getelementptr inbounds [${cached.len} x i8], [${cached.len} x i8]* ${cached.globalName}, i32 0, i32 0`;
       
       this.emit(`${tmp} = ${ir}`);
       
@@ -909,7 +908,8 @@ export class IRBuilder {
         ir,
         local: [],
         global: [],
-        rawStr: str
+        rawStr: str,
+        symbol: cached.globalName
       };
     }
     
@@ -933,10 +933,7 @@ export class IRBuilder {
     const tmp =
       this.newTemp();
     
-    const ir = `getelementptr inbounds ` +
-      `([${len} x i8], ` +
-      `[${len} x i8]* ${globalName}, ` +
-      `i32 0, i32 0)`;
+    const ir = `getelementptr inbounds [${len} x i8], [${len} x i8]* ${globalName}, i32 0, i32 0`
     
     this.emit(`${tmp} = ${ir}`);
     
@@ -951,7 +948,8 @@ export class IRBuilder {
       ir,
       local: [],
       global: [],
-      rawStr: str
+      rawStr: str,
+      symbol: globalName
     };
   }
   
@@ -1090,8 +1088,8 @@ entry:
       
       const { llvmStr, length } = this.toLLVMString(format);
       
-      const fmtName = `fmt_string_${id}`;
-      const fnName = `screen_string_${id}`;
+      const fmtName = `fmt_string_${this.moduleName}_${id}`;
+      const fnName = `screen_string_${this.moduleName}_${id}`;
       
       this.declareOneTime(
         fmtName,
@@ -1110,7 +1108,7 @@ entry:
       );
     }
     
-    const fnName = `screen_string_${id}`;
+    const fnName = `screen_string_${this.moduleName}_${id}`;  
     
     this.emit(`call void @${fnName}(i8* ${val})`);
   }

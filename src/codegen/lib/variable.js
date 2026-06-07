@@ -76,6 +76,7 @@
         
         if (expr?.kind === "literal") {
           this.IRB.globals.push(`${gName} = global ${llvmType} ${expr.ptr}`);
+          
         } else {
           this.IRB.guardStackOp(`NON-CONSTANT VARIABLE ${name}`, node);
           this.IRB.globals.push(`${gName} = global ${llvmType} ${initialValue}`);
@@ -178,7 +179,7 @@
         const isExported = this.IRB.exported;
         
         if (isExported) {
-          this.IRB.globals.push(`${gName} = global i8* ${expr?.ir}`);
+          this.IRB.globals.push(`${gName} = global i8* ${expr?.symbol}`);
         } else {
           this.IRB.globals.push(`${gName} = global i8* null`);
         }

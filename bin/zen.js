@@ -3,21 +3,20 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { fileURLToPath, pathToFileURL } from "url";
 
-import { Lexer } from "../src/lexer/lexer.js";
-import { Parser } from "../src/parser/parser.js";
-import { CodeGen } from "../src/codegen/codegen.js";
-import { IRBuilder } from "../src/codegen/helper/helper.js";
-
-import { fileURLToPath } from "url";
+// ---------------- ROOT ----------------
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// CLI install root (zen compiler folder)
 const COMPILER_ROOT = path.resolve(__dirname, "..");
 
-const command = process.argv[2];
-const file = process.argv[3];
+// ---------------- HELP ----------------
+
+const args = process.argv.slice(2);
+const command = args[0];
 
 function help() {
   console.log(`
@@ -29,8 +28,8 @@ Usage:
   zen ir <file>
   zen ast <file>
   zen tokens <file>
-  zen version
   zen help
+  zen version
 `);
 }
 
@@ -43,14 +42,9 @@ function run(cmd) {
   }
 }
 
-// ---------------- CLI ----------------
+// ---------------- HELP / VERSION ----------------
 
-if (!command) {
-  help();
-  process.exit(0);
-}
-
-if (command === "help") {
+if (!command || command === "help" || command === "--help" || command === "-h") {
   help();
   process.exit(0);
 }
@@ -60,19 +54,45 @@ if (command === "version") {
   process.exit(0);
 }
 
+// ---------------- INPUT FILE ----------------
+
+const file = args[1];
+
 if (!file) {
   console.error("error: missing input file");
   process.exit(1);
 }
 
-if (!fs.existsSync(file)) {
-  console.error(`error: file not found '${file}'`);
+const inputFile = path.resolve(file);
+
+if (!fs.existsSync(inputFile)) {
+  console.error(`error: file not found '${inputFile}'`);
   process.exit(1);
 }
 
-// ---------------- FRONTEND ----------------
+// Project root = file location (FILE-BASED compiler)
+const PROJECT_ROOT = path.dirname(inputFile);
+const source = fs.readFileSync(inputFile, "utf8");
 
-const source = fs.readFileSync(file, "utf8");
+// ---------------- LOAD COMPILER MODULES (DYNAMIC IMPORT FIX) ----------------
+
+const IRBuilder = (await import(
+  pathToFileURL(path.join(COMPILER_ROOT, "src/codegen/helper/helper.js")).href
+)).IRBuilder;
+
+const Lexer = (await import(
+  pathToFileURL(path.join(COMPILER_ROOT, "src/lexer/lexer.js")).href
+)).Lexer;
+
+const Parser = (await import(
+  pathToFileURL(path.join(COMPILER_ROOT, "src/parser/parser.js")).href
+)).Parser;
+
+const CodeGen = (await import(
+  pathToFileURL(path.join(COMPILER_ROOT, "src/codegen/codegen.js")).href
+)).CodeGen;
+
+// ---------------- FRONTEND ----------------
 
 const IRB = new IRBuilder();
 
@@ -92,9 +112,9 @@ if (command === "ast") {
   process.exit(0);
 }
 
-// ---------------- CODEGEN ----------------
+// ---------------- IR GENERATION ----------------
 
-const codegen = new CodeGen(ast);
+const codegen = new CodeGen(ast, "main");
 const llvm = codegen.generateLLVM();
 
 if (!llvm) {
@@ -103,81 +123,72 @@ if (!llvm) {
 }
 
 const moduleFiles = llvm.modules ? [...llvm.modules] : [];
-console.log(moduleFiles)
-if (command === "ir") {
-  console.log(llvm.ir);
+
+// ---------------- BUILD DIR (FILE BASED) ----------------
+
+const buildDir = path.join(PROJECT_ROOT, "build");
+fs.mkdirSync(buildDir, { recursive: true });
+
+// ---------------- OUTPUT FILES ----------------
+
+const exeName = path.basename(inputFile).replace(/\.(zen|z)$/, "");
+
+const outLL = path.join(buildDir, "out.ll");
+const outOptLL = path.join(buildDir, "out_opt.ll");
+const outO = path.join(buildDir, "out.o");
+
+fs.writeFileSync(outLL, llvm.ir);
+
+// ---------------- LLVM PIPELINE ----------------
+
+run(`opt -O3 ${outLL} -S -o ${outOptLL}`);
+run(`llc -filetype=obj -relocation-model=pic ${outOptLL} -o ${outO}`);
+
+// ---------------- MODULE OBJECTS ----------------
+
+const moduleObjs = [];
+
+for (const ll of moduleFiles) {
+  const absLL = path.resolve(PROJECT_ROOT, ll);
+  const obj = absLL.replace(".ll", ".o");
+
+  run(`llc -filetype=obj -relocation-model=pic ${absLL} -o ${obj}`);
+  moduleObjs.push(obj);
+}
+
+// ---------------- STD LIB + RUNTIME ----------------
+
+const stdlibObjs = [
+  path.join(COMPILER_ROOT, "src/zen_stdlib/constants.o"),
+  path.join(COMPILER_ROOT, "src/zen_stdlib/zen_stdlib_opt.o"),
+];
+
+const runtimeObjs = [
+  path.join(COMPILER_ROOT, "src/codegen/runtime/runtime.o"),
+  path.join(COMPILER_ROOT, "src/codegen/runtime/listRuntime.o"),
+  path.join(COMPILER_ROOT, "src/codegen/runtime/mapRuntime.o"),
+];
+
+// ---------------- LINK ----------------
+
+const outputExe = path.join(buildDir, exeName);
+
+run([
+  "clang",
+  outO,
+  ...moduleObjs,
+  ...stdlibObjs,
+  ...runtimeObjs,
+  "-O3",
+  "-o",
+  outputExe,
+].join(" "));
+
+// ---------------- RUN ----------------
+
+if (command === "build") {
+  console.log(`Build successful: ${outputExe}`);
   process.exit(0);
 }
 
-// ---------------- BUILD ----------------
-
-if (command !== "build" && command !== "run") {
-  console.error(`error: unknown command '${command}'`);
-  process.exit(1);
-}
-
-try {
-  fs.mkdirSync("build", { recursive: true });
-
-  const exeName = path.basename(file).replace(/\.(zen|z)$/, "");
-  const buildDir = "build";
-
-  // ---------------- MAIN IR ----------------
-  const outLL = path.join(buildDir, "out.ll");
-  const outOptLL = path.join(buildDir, "out_opt.ll");
-  const outO = path.join(buildDir, "out.o");
-
-  fs.writeFileSync(outLL, llvm.ir);
-
-  run(`opt -O3 ${outLL} -S -o ${outOptLL}`);
-  run(`llc -filetype=obj -relocation-model=pic ${outOptLL} -o ${outO}`);
-
-  // ---------------- MODULES ----------------
-  const moduleObjs = [];
-
-  for (const ll of moduleFiles) {
-    const obj = ll.replace(".ll", ".o");
-
-    run(`llc -filetype=obj -relocation-model=pic ${ll} -o ${obj}`);
-    moduleObjs.push(obj);
-  }
-
-  // ---------------- STDLIB (ONLY .o) ----------------
-  const stdlibObjs = [
-    path.join(COMPILER_ROOT, "src/zen_stdlib/constants.o"),
-   path.join(COMPILER_ROOT,  "src/zen_stdlib/zen_stdlib_opt.o"),
-  ];
-
-  // ---------------- RUNTIME (ONLY .o) ----------------
-  const runtimeObjs = [
-   path.join(COMPILER_ROOT,  "src/codegen/runtime/runtime.o"),
-   path.join(COMPILER_ROOT, "src/codegen/runtime/listRuntime.o"),
-   path.join(COMPILER_ROOT, "src/codegen/runtime/mapRuntime.o"),
-  ];
-
-  // ---------------- LINK ----------------
-  run(
-    [
-      "clang",
-      outO,
-      ...moduleObjs,
-      ...stdlibObjs,
-      ...runtimeObjs,
-      "-O3",
-      "-o",
-      path.join(buildDir, exeName),
-    ].join(" ")
-  );
-
-  // ---------------- RUN ----------------
-  if (command === "build") {
-    console.log(`Build successful: build/${exeName}`);
-    process.exit(0);
-  }
-
-  run(path.join(buildDir, exeName));
-
-} catch (err) {
-  console.error("Build failed");
-  process.exit(1);
-}
+run(outputExe);

@@ -35,9 +35,10 @@ import {
 } from '../config/config.js';
 
 export class CodeGen {
-  constructor(ast) {
+  constructor(ast, moduleName) {
     this.ast = ast;
-    this.IRB = new IRBuilder();
+    this.moduleName = moduleName;
+    this.IRB = new IRBuilder(this.moduleName);
     this.expr = new Expression(this.IRB);
     this.time = new Time(this.IRB, this.expr);
     this.map = new ZenMap(this.IRB, this.expr);
