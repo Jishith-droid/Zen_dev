@@ -1,4 +1,4 @@
-import { FORMAT_MAP } from '/src/config/config.js';
+import { FORMAT_MAP } from "../../../../config/config.js";
 
 export class IO {
   constructor(IRB, expr) {

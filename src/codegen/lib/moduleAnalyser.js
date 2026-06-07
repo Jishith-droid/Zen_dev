@@ -9,7 +9,8 @@ export class Module {
     this.IRB = IRB;
     this.moduleImports = new Map();
     this.c = 0;
-    
+    this.moduleFiles = new Set();
+
     // GLOBAL MODULE REGISTRY
     // shared export metadata only
     this.modules = new Map();
@@ -41,29 +42,28 @@ loadFile(source) {
     const file = this.loadFile(source);
     
     // 2. lex
-    const lexer = new Lexer(file);
+    const lexer = new Lexer(file, this.IRB);
     const tokens = lexer.tokenize();
     
     // 3. parse
-    const parser = new Parser(tokens);
+    const parser = new Parser(tokens, this.IRB);
     const ast = parser.parse();
     
     // 4. separate compilation
-    const moduleCodegen = new CodeGen(ast, this);
+    const moduleCodegen = new CodeGen(ast, this.IRB);
     
     const { ir, symbolTable, functionTable } = moduleCodegen.generateLLVM();
-    
-    console.log(ir) // for getting export file generated llvm
-    
+        
     // store generated llvm
     this.generatedModules.set(
       source,
       ir
     );
     
-    // optional browser download
     this.writeLLFile(source, ir);
-    
+    this.moduleFiles.add(
+  source.replace(/\.[^/.]+$/, ".ll")
+);
     const tables = { symbolTable: symbolTable[0], functionTable }
     
     // 5. collect exports ONLY
@@ -182,7 +182,7 @@ loadFile(source) {
     for (const name of names) {
       
       if (seen.has(name)) {
-        this.IRB.emitError("DeclarationError", `Duplicate ${type.toLowerCase()} '${name}' is already defined`, node)
+        this.IRB.emitError("DeclarationError", `Duplicate ${type.toLowerCase()} '${name}' is already defined`)
       }
       
       seen.add(name);
@@ -204,7 +204,7 @@ loadFile(source) {
       this.modules.get(source);
     
     if (!moduleData) {
-      this.IRB.emitError("ImportError", `Cannot resolve module '${source}' — file not found`, node)
+      this.IRB.emitError("ImportError", `Cannot resolve module '${source}' — file not found`)
     }
     
     imports.forEach(name => {
@@ -364,8 +364,11 @@ loadFile(source) {
   }
   
 writeLLFile(source, llvm) {
-  const outFile =
-    source.replace(/\.zen$/, ".ll");
+  const outFile = path.format({
+    dir: path.dirname(source),
+    name: path.parse(source).name,
+    ext: ".ll"
+  });
 
   fs.writeFileSync(outFile, llvm);
 }

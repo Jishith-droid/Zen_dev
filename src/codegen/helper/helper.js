@@ -545,7 +545,7 @@ export class IRBuilder {
     
     const current = this.symbolTable[this.symbolTable.length - 1];
     if (current.has(name)) {
-      this.emitError("DeclarationError", `Variable '${name}' is already defined`, node)
+      this.emitError("DeclarationError", `Variable '${name}' is already defined`)
     }
     current.set(name, data);
   }
@@ -558,7 +558,7 @@ export class IRBuilder {
       }
     }
     
-    this.emitError("ReferenceError", `variable ${name} is not defined`, node);
+    this.emitError("ReferenceError", `variable ${name} is not defined`);
   }
   
   enterScope() {

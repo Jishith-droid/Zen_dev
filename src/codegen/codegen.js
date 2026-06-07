@@ -178,6 +178,7 @@ export class CodeGen {
     
     return {
       ir: this.IRB.getIR(),
+      modules: this.module.moduleFiles,
       symbolTable: this.IRB.symbolTable,
       functionTable: this.IRB.functions
     }
