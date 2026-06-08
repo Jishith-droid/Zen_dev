@@ -47,7 +47,7 @@ export class ZenList {
       this.IRB.sizeOf(deepestType);
     
     const validateDepth = (el, generic) => {
-      console.log(generic)
+      
       const expectsList = generic.type === "List";
       const isListLiteral =
         el.type === "ARRAY" ||
@@ -221,7 +221,7 @@ export class ZenList {
       
       const expr =
         this.expr.handleExpression(node.value);
-      console.log(expr)
+      
       const isValidList =
         expr.isList;
       

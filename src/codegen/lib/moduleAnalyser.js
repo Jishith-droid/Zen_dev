@@ -5,8 +5,9 @@ import fs from "fs";
 import path from "path";
 
 export class Module {
-  constructor(IRB) {
+  constructor(IRB, module) {
     this.IRB = IRB;
+    this.module = module;
     this.moduleImports = new Map();
     this.c = 0;
     this.moduleFiles = new Set();
@@ -50,28 +51,26 @@ loadFile(source) {
     const ast = parser.parse();
     
     // 4. separate compilation
-const moduleName = path.basename(source, '.zen');
-this.IRB.globalTempCount = 0;
-this.IRB.strCount = 0;
-this.IRB.formatMap = new Map(); // reset screen string cache too
+    const moduleName = path.basename(source, '.zen');
+    this.IRB.globalTempCount = 0;
+    this.IRB.strCount = 0;
+    this.IRB.formatMap = new Map(); // reset screen string cache
 
     const moduleCodegen = new CodeGen(ast, moduleName);
     
     const { ir, symbolTable, functionTable } = moduleCodegen.generateLLVM();
-    this.IRB.moduleName = "main";
-this.IRB.globalTempCount = 0;
-this.IRB.strCount = 0;
-this.IRB.formatMap = new Map();    
+    this.IRB.moduleName = this.module;
+    this.IRB.globalTempCount = 0;
+    this.IRB.strCount = 0;
     // store generated llvm
     this.generatedModules.set(
       source,
       ir
     );
-    
-    this.writeLLFile(source, ir);
-    this.moduleFiles.add(
-  source.replace(/\.[^/.]+$/, ".ll")
-);
+
+const llPath = this.writeLLFile(source, ir);
+this.moduleFiles.add(llPath);
+
     const tables = { symbolTable: symbolTable[0], functionTable }
     
     // 5. collect exports ONLY
@@ -271,7 +270,6 @@ this.IRB.formatMap = new Map();
           needsLoad: true,
           isConstant: variable?.isConstant
         });
-        this.IRB.logSymbolTable()
         return;
       }
       
@@ -372,13 +370,10 @@ this.IRB.formatMap = new Map();
   }
   
 writeLLFile(source, llvm) {
-  const outFile = path.format({
-    dir: path.dirname(source),
-    name: path.parse(source).name,
-    ext: ".ll"
-  });
-
+  const buildDir = path.join(path.dirname(source), "build");
+  fs.mkdirSync(buildDir, { recursive: true });
+  const outFile = path.join(buildDir, path.basename(source, ".zen") + ".ll");
   fs.writeFileSync(outFile, llvm);
+  return outFile;
 }
-  
 }

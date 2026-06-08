@@ -48,7 +48,7 @@ export class Type {
     }
     
     const expr = this.expr.handleExpression(args[0]);
-    console.log(expr)
+    
     this.IRB.emitExpr(expr);
     
     if (expr?.llvmType.startsWith("[") || expr?.isMap || expr?.isList || expr?.isStruct) {

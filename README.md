@@ -1,6 +1,9 @@
 # ZEN Programming Language
 
-**Version 1.0.0** · Stable · May 2026
+**Version 1.0.0** · Stable · June 2026
+
+**GitHub**: [zen](https://github.com/&lt;your-username&gt;/zen)  
+**Contact**: yourmail@example.com  
 
 ---
 
@@ -50,6 +53,154 @@ The language is designed from the compiler's perspective first. Ease of implemen
 | **Structural programming model** | Explicit logic construction with no hidden control flow. |
 
 ---
+
+## Version
+
+Current Version: v1.0.0
+
+### v1.0.0 (Initial Release)
+
+- Full LLVM-based compiler pipeline
+- Lexer, Parser, AST generation
+- LLVM IR generation and optimization
+- Native binary generation via clang
+- CLI support (run, build, ir, ast, tokens, clean)
+- Basic type system (int, double, string, bool, List, Map)
+- Control flow (if, switch, loop, while)
+- Functions and structs
+- Error reporting system (ReferenceError, TypeError, InternalError)
+
+---
+
+# Installation
+
+Zen can be installed depending on your operating system.
+
+### Ubuntu / Debian / Linux
+
+Install Zen using apt:
+
+```bash
+sudo apt install zen
+```
+
+### macOS
+
+Install Zen using Homebrew:
+
+```bash
+brew install zen
+```
+
+### Windows
+
+Windows support is not available in v1 yet. It will be added in a future release.
+
+### Termux (Android)
+
+Install Zen using pkg:
+
+```bash
+pkg install zen
+```
+
+---
+
+## CLI Usage
+
+Zen provides a simple command-line interface for compiling, inspecting, and running programs.
+
+```bash
+zen run <file>       # Compile and run program
+zen build <file>     # Build executable binary
+zen ir <file>        # Generate LLVM IR
+zen ast <file>       # Print Abstract Syntax Tree
+zen tokens <file>    # Print lexer tokens
+zen clean <file>     # Remove build artifacts
+zen --help           # Show help menu
+zen --version        # Show version info
+```
+
+---
+
+## Notes
+
+- All build artifacts are stored inside the `build/` directory.
+- Zen compiles to native binaries using LLVM.
+- Each command is designed for development, debugging, and compilation workflows.
+
+---
+
+## Examples
+
+### Hello World
+
+```zen
+  screen("Hello World!")
+```
+
+### Simple Variables
+
+```zen
+  string name = "Zen"
+  int const age = 21
+
+  screen(name)
+  screen(`Age: ${age}`)
+```
+
+### Loop Example
+
+```zen
+  loop (int i = 0, i < 10, i++) {
+    screen(i) 
+  }
+```
+
+---
+
+### Compilation Flow
+
+```bash
+zen tokens main.zen     # Lexical analysis
+zen ast main.zen        # Parse into AST
+zen ir main.zen         # Generate LLVM IR
+zen build main.zen      # Build executable
+zen run main.zen        # Compile and run directly
+```
+
+---
+
+## Error Example
+
+### ReferenceError
+
+```zen
+  screen(x)
+```
+
+```
+[Zen ReferenceError]
+  ├── Variable 'x' is not defined
+  └── at: main.zen:1:8
+```
+
+---
+
+### TypeError
+
+```zen
+  int a = 10
+  bool b = a # error
+  screen(a + b)
+```
+
+```
+[Zen TypeError]
+  ├── Cannot assign 'int' to variable 'b' of type 'bool'
+  └── at: main.zen:2:10
+```
+
 
 ## Reactive Variables
 
@@ -209,9 +360,10 @@ The following identifiers are reserved by the language and may not be used as us
 | Category | Keywords |
 |---|---|
 | **Types** | `int` `double` `string` `bool` `List` `Map` |
+| **reactive** | `reactive` |
 | **Control Flow** | `if` `else if` `else` `loop` `while` `do` `switch` `case` |
 | **Loop Control flow** | `break` `continue` |
-| **export and import** | `export` `import` |
+| **export and import** | `export` `import`  `from` |
 | **Functions** | `fn` `return` |
 | **inference** | `auto` |
 | **struct** | `struct` |
@@ -351,6 +503,30 @@ false
 ```
 
 Any other casing (`True`, `TRUE`) is not a boolean literal and will be interpreted as an identifier.
+
+### 2.6.5 List Literals
+
+A comma-separated sequence of values enclosed in square brackets.
+
+```zen
+[10, 20, 30]
+["hello", "world"]
+[1.0, 2.5, 3.14]
+```
+
+The type of a list literal is inferred from its first element. All subsequent elements must match that type.
+
+```zen
+[10, 20, 30]       # inferred as List<int>
+[1.0, 2.5, 3.14]   # inferred as List<double>
+["a", "b", "c"]    # inferred as List<string>
+```
+
+An empty list `[]` has no inferrable type and must be used with an explicit declaration.
+
+```zen
+List<int> nums = []
+```
 
 ---
 
@@ -1024,7 +1200,7 @@ loop (value in myMap) {
 
 #### Loop Of — Array and List Iteration
 
-Iterates over elements of a `List`, fixed-size array, or rest parameter (which is a `List` under the hood).
+Iterates over elements of a `List`, fixed-size array, or rest parameter (which is internally treated as a `List`).
 
 ```
 loop_of_stmt
@@ -1050,6 +1226,61 @@ loop (row of matrix) {
   }
 }
 ```
+
+### Semantics
+
+- The iteration count is **fixed at the start of the loop**
+- The loop uses the **initial length of the collection**
+- It does NOT observe runtime mutations during iteration
+
+### Undefined / Unsafe Behavior
+
+Mutating the underlying collection inside a `loop of` is **undefined behavior**, including:
+
+- `push`, `pop`, `remove` on lists
+- index assignment on fixed-size arrays
+- structural modification of the list being iterated
+- modification of rest-parameter lists
+
+```zen
+loop (x of list) {
+  list.push(10)   # UB
+}
+
+loop (x of arr) {
+  arr[0] = 99     # UB
+}
+```
+
+### Why this is UB
+
+- Iteration length is captured before execution begins
+- Mutations do not affect the loop counter
+- This can lead to:
+  - skipped elements
+  - repeated elements
+  - out-of-bounds access
+  - inconsistent runtime state
+
+### Recommended Alternative
+
+For cases requiring consistent mutation-safe iteration behavior, use:
+
+- the **general loop construct (Section 4.10)**:
+```zen
+loop (init?, condition, update) { # init is optional
+  # safe controlled iteration
+}
+```
+
+- or a **while loop** when iteration depends on dynamic state:
+```zen
+while (condition) {
+  # safe dynamic iteration
+}
+```
+
+These constructs are designed for cases where the collection may change during iteration and a stable execution model is required.
 
 ---
 
@@ -1250,19 +1481,35 @@ a.country = "India"                    # creates new field at runtime
 
 #### Built-in Methods
 
-| Method | Description |
-|---|---|
-| `free()` | Releases the Map from heap memory |
+| Method | Signature | Description |
+|---|---|---|
+| `has` | `has(key)` | Returns `bool` — checks if a key exists |
+| `remove` | `remove(key)` | Deletes the key-value pair from the map |
+| `free` | `free()` | Releases the map from heap memory |
 
 ```zen
-a.free()
+Map person = {
+  name: "Achu",
+  age: 25
+}
+
+bool exists = person.has("name")       # true
+person.remove("age")                   # deletes age key
+person.free()                          # releases map
 ```
 
-After calling `free()`, the Map must not be accessed or reassigned. Any use after `free()` will result in a runtime error.
+#### Free and Maps
+
+After calling `free()`, the map must not be accessed. Any use after `free()` results in a runtime error.
 
 ```zen
-a.free()
-a.name = "x"                           # runtime error: use after free
+Map person = {
+  name: "Achu",
+  age: 25
+}
+
+person.free()
+person.name = "x"                      # runtime error: use after free
 ```
 
 ---
@@ -1355,6 +1602,19 @@ nums.push(1)                           # runtime error: use after free
 For nested lists, freeing an inner list directly is technically permitted but not recommended. ZEN cannot fully track inner list lifetimes after a partial free, and accessing a freed inner list will throw a runtime error.
 
 > **Recommendation:** Do not call `free()` on individual inner lists of a nested `List<List<T>>`. Free the outer list instead.
+
+### Built-in List Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `length` | `int` | Number of elements currently in the list |
+| `capacity` | `int` | Total allocated slots before reallocation |
+
+```zen
+List<int> nums = [1, 2, 3]
+int len = nums.length      # 3
+int cap = nums.capacity    # allocated capacity
+```
 
 ---
 
@@ -1625,11 +1885,11 @@ Zen supports default values for **primitive** and **List** parameters. If a call
 
 ```zen
 fn greet(string name = "World") void {
-  print("Hello, " + name)
+  screen("Hello, " + name)
 }
 
 fn power(int base, int exp = 2) int {
-  return base ^ exp
+  ...
 }
 ```
 
@@ -2450,10 +2710,12 @@ Returns `int`.
 
 ```zen
 int len = length("hello")           # 5
-int len = length([1, 2, 3])         # 3
-List<int> nums = [10, 20, 30]
-int len = length(nums)              # 3
+int arr[3] = [10, 20, 30]           # 3
 ```
+
+note: length() is valid only for strings and fixed size arrays. List have
+built-in length property.
+
 ---
 
 #### Type Conversion Functions
@@ -2579,6 +2841,29 @@ bool connected = net.online()
 #### 11.3.1 `sys`
 
 System-level process control.
+
+---
+
+##### `sys.performance`
+
+Returns a high-precision monotonic timestamp in milliseconds.
+
+```
+sys.performance() → double
+```
+
+Returns `double`.
+
+```zen
+double start = sys.performance()
+
+# ... code to benchmark ...
+
+double end = sys.performance()
+double elapsed = end - start
+
+screen("Elapsed: " + elapsed + "ms")
+```
 
 ---
 
@@ -3994,14 +4279,14 @@ Zen reports errors in a consistent structured format. Compile-time errors includ
 **Compile-time format:**
 ```
 [Zen  <ErrorType>]
-  ├── <message>
+  ├── `<message>`
   └── at: <file>:<line>:<col>
 ```
 
 **Runtime format:**
 ```
 [Zen  <ErrorType>]
-  └── <message>
+  └── `<message>`
 ```
 
 ---
@@ -4301,7 +4586,38 @@ Common triggers:
 
 ---
 
-```markdown
+#### InternalError
+
+Raised when the compiler encounters an unexpected internal failure. This indicates a bug in the Zen compiler rather than user code.
+
+```
+[Zen  InternalError]
+  ├── Unexpected compiler state in IR generation
+  └── at: main.zen:0:0
+```
+
+```
+[Zen  InternalError]
+  ├── LLVM code generation failed due to invalid AST node
+  └── at: main.zen:22:14
+```
+
+```
+[Zen  InternalError]
+  ├── Null reference encountered during type resolution
+  └── at: main.zen:0:0
+```
+
+Common triggers:
+- Invalid or unexpected AST structure
+- Codegen receiving unsupported node types
+- Compiler state corruption during IR generation
+- Missing or broken type resolution
+- Bugs in compiler passes (parser / semantic / IR / optimizer)
+```
+
+---
+
 #### ReferenceError
 
 Raised when a variable, function, struct, field, or map key is referenced but has not been defined.
@@ -4479,6 +4795,7 @@ The following identifiers are reserved by the language and cannot be used as use
 | `export` | Module |
 | `import` | Module |
 | `from` | Module |
+| `reactive` | reactive variable |
 
 ---
 
@@ -4620,3 +4937,71 @@ When a variable is declared without an initializer, it is lowered to its type's 
 | `IndexError` | Runtime | Out-of-bounds array or list access |
 | `PanicError` | Runtime | Explicit `sys.panic()` call |
 | `LoopError` | Runtime | `loop in` on heterogeneous or nested Map |
+
+
+### K. Installation
+
+Zen can be installed depending on the target platform.
+
+#### Ubuntu / Debian / Linux
+
+```bash
+sudo apt install zen
+```
+
+#### macOS
+
+```bash
+brew install zen
+```
+
+#### Windows
+
+Not available in v1 yet.
+
+#### Termux (Android)
+
+```bash
+pkg install zen
+```
+
+### L. Links
+
+- Source Code: https://github.com/&lt;your-repo&gt;
+- Documentation: https://&lt;your-doc-site&gt;
+- Issue Tracker: https://github.com/&lt;your-repo&gt;/issues
+
+---
+
+### M. Open Source
+
+Zen is an open-source project.
+
+You are free to:
+- Use Zen in personal or commercial projects
+- Modify the compiler
+- Contribute improvements and fixes
+
+License: MIT
+
+---
+
+### N. Contact
+
+For bugs, contributions, or discussions:
+
+- Email: yourmail@example.com
+- GitHub: https://github.com/&lt;your-username&gt;
+
+## Disclaimer
+
+Zen v1 is the first stable release of the language and compiler.
+
+While most features are documented and implemented, there may still be:
+- Undocumented behaviors
+- Edge-case undefined behavior (UB)
+- Minor inconsistencies in certain compiler paths
+
+If you encounter any unexpected behavior, bugs, or missing documentation, please report it.
+
+This helps improve the language and ensures future releases are more stable and consistent.

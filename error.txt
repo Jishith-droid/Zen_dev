@@ -47,6 +47,23 @@ Common triggers:
 - Unterminated string literals
 - Malformed function, loop, or conditional declarations
 
+---
+
+### InternalError
+
+Raised when the compiler encounters an unexpected internal state that should never occur during normal compilation.
+
+[Zen  InternalError]
+  ├── Missing function table entry for 'foo'
+  └── at: main.zen:5:1
+
+[Zen  InternalError]
+  ├── Missing symbol table entry for 'x'
+  └── at: main.zen:3:1
+
+Common triggers:
+- A function or variable passed through codegen without a corresponding table entry
+- Compiler pipeline reached an unexpected or inconsistent state
 
 ---
 

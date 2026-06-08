@@ -161,7 +161,7 @@ export class Struct {
       isVarRef: true,
       needsLoad: true
     }));
-    this.IRB.logSymbolTable();
+    
   }
   
   
@@ -178,7 +178,7 @@ export class Struct {
     } else {
       variable = this.IRB.getVar(base);
     }
-    console.log(variable)
+    
     
     if (variable?.isMap) {
       

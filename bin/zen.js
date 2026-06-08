@@ -10,13 +10,66 @@ import { fileURLToPath, pathToFileURL } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// CLI install root (zen compiler folder)
+// CLI install root
 const COMPILER_ROOT = path.resolve(__dirname, "..");
+
+const IRBuilder = (await import(
+  pathToFileURL(path.join(COMPILER_ROOT, "src/codegen/helper/helper.js")).href
+)).IRBuilder;
+
+const IRB = new IRBuilder();
+
+process.on("uncaughtException", (err) => {
+  IRB.emitError(`InternalError`, `${err.message}`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (err) => {
+  IRB.emitError(`InternalError`, `${err}`);
+  process.exit(1);
+});
 
 // ---------------- HELP ----------------
 
 const args = process.argv.slice(2);
 const command = args[0];
+
+const validCommands = new Set([
+  "run",
+  "build",
+  "ir",
+  "ast",
+  "tokens",
+  "clean",
+  "--help",
+  "-h",
+  "help",
+  "--version",
+  "version",
+  "-v"
+]);
+
+if (!validCommands.has(command)) {
+  console.error(`error: unknown command '${command}'`);
+  help();
+  process.exit(1);
+}
+
+function checkDeps() {
+  try {
+    execSync("clang --version", { stdio: "ignore" });
+    execSync("llc --version", { stdio: "ignore" });
+    execSync("opt --version", { stdio: "ignore" });
+  } catch {
+    console.error(`error: LLVM not found. Install it with:
+     Ubuntu/Debian:  sudo apt install llvm clang
+     Mac:            brew install llvm
+     Termux:         pkg install llvm clang`);
+    process.exit(1);
+  }
+}
+
+checkDeps();
 
 function help() {
   console.log(`
@@ -28,8 +81,9 @@ Usage:
   zen ir <file>
   zen ast <file>
   zen tokens <file>
-  zen help
-  zen version
+  zen --help
+  zen --version
+  zen clean <file>
 `);
 }
 
@@ -49,14 +103,15 @@ if (!command || command === "help" || command === "--help" || command === "-h") 
   process.exit(0);
 }
 
-if (command === "version") {
-  console.log("Zen 1.0.0");
+if (command === "version" || command === "--version" || command === "-v") {
+  console.log("Zen v1.0.0");
   process.exit(0);
 }
 
 // ---------------- INPUT FILE ----------------
 
 const file = args[1];
+const moduleName = path.basename(file, path.extname(file));
 
 if (!file) {
   console.error("error: missing input file");
@@ -70,15 +125,11 @@ if (!fs.existsSync(inputFile)) {
   process.exit(1);
 }
 
-// Project root = file location (FILE-BASED compiler)
+// Project root = file location 
 const PROJECT_ROOT = path.dirname(inputFile);
 const source = fs.readFileSync(inputFile, "utf8");
 
-// ---------------- LOAD COMPILER MODULES (DYNAMIC IMPORT FIX) ----------------
-
-const IRBuilder = (await import(
-  pathToFileURL(path.join(COMPILER_ROOT, "src/codegen/helper/helper.js")).href
-)).IRBuilder;
+// ---------------- LOAD COMPILER MODULES ----------------
 
 const Lexer = (await import(
   pathToFileURL(path.join(COMPILER_ROOT, "src/lexer/lexer.js")).href
@@ -92,15 +143,13 @@ const CodeGen = (await import(
   pathToFileURL(path.join(COMPILER_ROOT, "src/codegen/codegen.js")).href
 )).CodeGen;
 
-// ---------------- FRONTEND ----------------
-
-const IRB = new IRBuilder();
+// ---------------- FRONTEND ---------------
 
 const lexer = new Lexer(source, IRB);
 const tokens = lexer.tokenize();
 
 if (command === "tokens") {
-  console.log(tokens);
+  console.log(JSON.stringify(tokens, null, 2));
   process.exit(0);
 }
 
@@ -114,34 +163,44 @@ if (command === "ast") {
 
 // ---------------- IR GENERATION ----------------
 
-const codegen = new CodeGen(ast, "main");
+const codegen = new CodeGen(ast, moduleName); 
 const llvm = codegen.generateLLVM();
 
+if (command === "ir") {
+  console.log(llvm.ir);
+  process.exit(0);
+}
+
 if (!llvm) {
-  console.error("IR generation failed");
   process.exit(1);
 }
 
 const moduleFiles = llvm.modules ? [...llvm.modules] : [];
 
-// ---------------- BUILD DIR (FILE BASED) ----------------
+// ---------------- BUILD DIR ----------------
 
 const buildDir = path.join(PROJECT_ROOT, "build");
 fs.mkdirSync(buildDir, { recursive: true });
 
 // ---------------- OUTPUT FILES ----------------
 
-const exeName = path.basename(inputFile).replace(/\.(zen|z)$/, "");
+ const exeName = path.basename(inputFile).replace(/\.zen$/, "");
 
-const outLL = path.join(buildDir, "out.ll");
-const outOptLL = path.join(buildDir, "out_opt.ll");
-const outO = path.join(buildDir, "out.o");
+const outLL = path.join(buildDir, `${exeName}.ll`);
+const outOptLL = path.join(buildDir, `${exeName}_opt.ll`);
+const outO = path.join(buildDir, `${exeName}.o`);
 
 fs.writeFileSync(outLL, llvm.ir);
 
+if (command === "clean") {
+  fs.rmSync(path.join(PROJECT_ROOT, "build"), { recursive: true, force: true });
+  console.log("Cleaned build directory");
+  process.exit(0);
+}
+
 // ---------------- LLVM PIPELINE ----------------
 
-run(`opt -O3 ${outLL} -S -o ${outOptLL}`);
+run(`opt -O2 ${outLL} -S -o ${outOptLL}`);
 run(`llc -filetype=obj -relocation-model=pic ${outOptLL} -o ${outO}`);
 
 // ---------------- MODULE OBJECTS ----------------

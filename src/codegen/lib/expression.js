@@ -1402,7 +1402,23 @@ export class Expression {
       let LNode = resolve(node.left);
       let RNode = resolve(node.right);
       
-      if (!LNode || !RNode) this.IRB.emitError("Invalid binary operation: left or right operand is missing or invalid", node);
+      if (LNode?.isList) {
+  
+  this.IRB.emitError(
+    "TypeError",
+    "Binary operations on lists are not supported", node?.left
+  );
+}
+
+if (RNode?.isList) {
+  
+  this.IRB.emitError(
+    "TypeError",
+    "Binary operations on lists are not supported", node?.right
+  );
+}
+      
+      if (!LNode || !RNode) this.IRB.emitError("Invalid binary operation: left or right operand is missing or invalid", node?.left?.line || node?.right?.line);
       
       lPtr = LNode.ptr;
       rPtr = RNode.ptr;
@@ -1591,6 +1607,13 @@ export class Expression {
       /* ========= LEFT ========= */
       const LNode = resolve(node.left);
       
+      if (LNode?.isList || RNode?.isList) {
+  this.IRB.emitError(
+    "TypeError",
+    "Binary operations on lists are not supported", node?.left?.line || node?.right?.line
+  );
+}
+      
       local.push(...LNode.local || []);
       global.push(...LNode.global || []);
       
@@ -1630,6 +1653,13 @@ export class Expression {
       local.push(`${rhsLabel}:`);
       
       const RNode = resolve(node.right);
+      
+      if (RNode?.isList) {
+  this.IRB.emitError(
+    "TypeError",
+    "Binary operations on lists are not supported", node?.value
+  );
+}
       
       local.push(...RNode.local || []);
       global.push(...RNode.global || []);

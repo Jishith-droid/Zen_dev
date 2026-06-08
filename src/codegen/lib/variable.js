@@ -589,7 +589,7 @@
         dimensions: dimensions.length,
         dimensionsData: dimSizes
       }));
-      this.IRB.logSymbolTable()
+      
     }
     
     arrayAccessVariable(node, globalScope) {
@@ -628,7 +628,7 @@
         isArray: false,
         needsLoad: true
       }));
-      this.IRB.logSymbolTable()
+      
     }
     
     handleMemberArrayReassign(exprNode) {

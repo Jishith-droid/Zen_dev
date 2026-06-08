@@ -45,7 +45,7 @@ export class CodeGen {
     this.network = new ZenNetwork(this.IRB, this.expr);
     this.infer = new InferType(this.IRB);
     this.file = new ZenFileSystem(this.IRB, this.expr);
-    this.module = new Module(this.IRB, this);
+    this.module = new Module(this.IRB, );
     this.ternary = new Ternary(this.IRB, this.expr);
     this.expr.setTernary(this.ternary)
     this.os = new OS(this.IRB, this.expr);
@@ -141,7 +141,7 @@ export class CodeGen {
     }
     
     for (const node of this.ast) {
-      if (!this.IRB.diaganosticMode) {
+      if (!this.IRB.diagnosticMode) {
         if (this.IRB.hadError) {
           return null;
         }
@@ -189,7 +189,7 @@ export class CodeGen {
   dispatch(node, globalScope = true, fromInsideBlock = false) {
     // if its direct node dont again hoist function. we can toggle this in src/codegen/lib/block.js
     
-    if (!this.IRB.diaganosticMode) {
+    if (!this.IRB.diagnosticMode) {
       if (this.IRB.hadError) {
         return null;
       }

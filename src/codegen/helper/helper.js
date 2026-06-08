@@ -44,7 +44,7 @@ export class IRBuilder {
     this.loopBlockTerminated = false;
     this.loopIterationSkipped = false;
     
-    this.diaganosticMode = true;
+    this.diagnosticMode = false;
     this.DEBUG_IR = false; // debug mode
     this.exported = false; // exported file flag
     this.stdlibMode = false; // std mode toggler
@@ -136,8 +136,8 @@ export class IRBuilder {
   }
   
   emitExpr(expr) {
-    if (expr?.local?.length) this.emit(expr.local.join("\n"));
-    if (expr?.global?.length) this.globals.push(expr.global.join("\n"));
+    if (expr?.local?.length) this.emit(expr.local.join("\n").trim());
+    if (expr?.global?.length) this.globals.push(expr.global.join("\n").trim());
   }
   
   enterFunction(name) {
@@ -713,46 +713,37 @@ strTemp() {
   
   
   emitError(type, message, node = null) {
-    if (!this.diaganosticMode) {
+    if (!this.diagnosticMode) {
       this.errors.push({ type, message, node });
       this.hadError = true;
       this.printError(this.errors);
     } else {
-      throw new Error(`[Zen Error] ${type}: ${message} at line ${node?.line}:${node?.column}`);
+      throw new Error(`[Zen Error] ${type}: ${message} at ${moduleName}.zen:line ${node?.line}:${node?.column}`);
     }
   }
   
   printError() {
-    const err = this.errors?.[0];
-    
-    if (!err) return;
-    
-    const hasLocation =
-      err.node?.line != null &&
-      err.node?.column != null;
-    
-    const hasTrace =
-      Array.isArray(this.runtimeStack) &&
-      this.runtimeStack.length > 0;
-    
-    const trace = hasTrace ?
-      "\n  ├── stack trace:\n" +
-      this.runtimeStack
-      .slice()
-      .reverse()
-      .map(fn => `  │   at ${fn}()`)
-      .join("\n") :
-      "";
-    
-    console.error(
-      `[Zen ${err.type}]
-  ├── ${err.message}${
-    hasLocation
-      ? `\n  ╰── at line:${err.node.line}:${err.node.column}`
-      : ""
-  }${trace}`
-    );
-  }
+  const err = this.errors?.[0];
+  if (!err) return;
+
+  const RESET = "\x1b[0m";
+  const RED = "\x1b[31m";
+  const YELLOW = "\x1b[33m";
+  const CYAN = "\x1b[36m";
+  const GREEN = "\x1b[32m";
+  const BOLD = "\x1b[1m";
+
+  const location =
+    (err.node?.line != null && err.node?.column != null)
+      ? `${this.moduleName}.zen:${err.node.line}:${err.node.column}`
+      : `${this.moduleName}.zen`;
+
+  console.error(
+`${BOLD}${RED}[Zen ${err.type}]${RESET}
+  ├── ${YELLOW}${err.message}${RESET}
+  └── at: ${CYAN}${location}${RESET}`
+  );
+}
   
   formatValue(value, type) {
     if (type === "double") {
@@ -1855,7 +1846,7 @@ end:
       const fn = STD_FUNCTIONS_SCHEMA[name];
       
       if (!fn) {
-        console.log("Missing stdlib:", name);
+        this.emitError("InternalError", `Missing stdlib: ${name}`);
         continue;
       }
       
